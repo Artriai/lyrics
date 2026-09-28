@@ -17,20 +17,22 @@ class JapaneseReadingConverterTest {
 
     @Test
     fun readingForUnknownKanjiFallsBackToSurfaceInsteadOfBlank() {
-        // Ateji / slang kuromoji cannot read must not produce a blank
-        // annotation, otherwise full-lyrics mode renders no romaji line.
-        val reading = converter.readingFor("夜露死苦")
+        // kuromoji has no reading for 做 here: the old code dropped the token
+        // entirely ("kokoro shi"), leaving a gap in full-lyrics romaji mode.
+        val reading = converter.readingFor("心做し")
         assertNotNull(reading)
         assertTrue(reading!!.isNotBlank())
+        assertTrue(reading.contains("做"))
+        assertTrue(reading.any { it in 'a'..'z' })
     }
 
     @Test
     fun readingForMixedLineKeepsUnknownKanjiWithoutGaps() {
-        val reading = converter.readingFor("夜露死苦な夜に")
+        val reading = converter.readingFor("心做しな夜に")
         assertNotNull(reading)
         assertTrue(reading!!.isNotBlank())
         // The unknown kanji survive as-is alongside real romaji.
-        assertTrue(reading.contains("夜露死苦"))
+        assertTrue(reading.contains("做"))
         assertTrue(reading.any { it in 'a'..'z' })
     }
 
