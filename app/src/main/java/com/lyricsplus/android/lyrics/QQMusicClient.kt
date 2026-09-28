@@ -9,7 +9,6 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
-import kotlin.math.abs
 
 class QQMusicClient {
     suspend fun findSyncedLyrics(track: NowPlaying): Result<LyricsSearchResult> = withContext(Dispatchers.IO) {
@@ -104,16 +103,15 @@ class QQMusicClient {
     private fun searchSongMid(track: NowPlaying): QQMusicSearchResult? {
         val query = "${track.track} ${track.artist}"
 
-        // The unsigned SearchCgiService musicu request now returns an empty
-        // song list. QQ's public search endpoint still provides the MID needed
-        // by GetPlayLyricInfo, while lyric retrieval itself remains on musicu.
+        // client_search_cp now returns HTTP 500 with an empty body, so search
+        // goes through the smartbox suggestion endpoint instead. Its items
+        // carry mid/name/singer only (singer is a "/"-joined string, no
+        // album or duration fields), so scoring is title + artist only.
         val url = QQ_MUSIC_SEARCH_API.toHttpUrl().newBuilder()
-            .addQueryParameter("w", query)
+            .addQueryParameter("key", query)
             .addQueryParameter("format", "json")
-            .addQueryParameter("p", "1")
-            .addQueryParameter("n", "10")
-            .addQueryParameter("aggr", "1")
-            .addQueryParameter("cr", "1")
+            .addQueryParameter("g_tk", "5381")
+            .addQueryParameter("uin", "0")
             .build()
         val response = requestGet(url.toString())
         if (response.code !in 200..299) return null
@@ -122,7 +120,7 @@ class QQMusicClient {
         if (json.optInt("code", -1) != 0) return null
         val songs = json.optJSONObject("data")
             ?.optJSONObject("song")
-            ?.optJSONArray("list")
+            ?.optJSONArray("itemlist")
             ?: return null
 
         var bestMid: String? = null
@@ -130,39 +128,29 @@ class QQMusicClient {
 
         val normalizedTitle = track.track.lowercase().replace("\\s+".toRegex(), "")
         val normalizedArtist = track.artist.lowercase().replace("\\s+".toRegex(), "")
-        val normalizedAlbum = track.album.lowercase().replace("\\s+".toRegex(), "")
 
         for (i in 0 until songs.length()) {
             val song = songs.getJSONObject(i)
-            val name = song.optString("songname").lowercase().replace("\\s+".toRegex(), "")
-            val album = song.optString("albumname").lowercase().replace("\\s+".toRegex(), "")
-            
-            val singersArray = song.optJSONArray("singer")
-            val singers = StringBuilder()
-            if (singersArray != null) {
-                for (j in 0 until singersArray.length()) {
-                    singers.append(singersArray.getJSONObject(j).optString("name")).append(" ")
-                }
-            }
-            val artistStr = singers.toString().lowercase().replace("\\s+".toRegex(), "")
-            
-            val duration = song.optLong("interval")
-            val expectedDuration = track.durationSeconds.toLong()
-            val durationDiff = if (expectedDuration > 0) abs(expectedDuration - duration) else Long.MAX_VALUE
+            val name = song.optString("name").lowercase().replace("\\s+".toRegex(), "")
+            // smartbox returns singers as a single "/"-joined string,
+            // e.g. "周杰伦/林俊杰"; contains-matching handles it directly.
+            val artistStr = song.optString("singer").lowercase().replace("\\s+".toRegex(), "")
+            val mid = song.optString("mid")
+            if (mid.isBlank()) continue
 
-            var score = 0
-            if (name == normalizedTitle) score += 50
-            else if (normalizedTitle.isNotBlank() && (name.contains(normalizedTitle) || normalizedTitle.contains(name))) score += 20
-            
+            var titleScore = 0
+            if (name == normalizedTitle) titleScore = 50
+            else if (normalizedTitle.isNotBlank() && (name.contains(normalizedTitle) || normalizedTitle.contains(name))) titleScore = 20
+
+            var score = titleScore
             if (normalizedArtist.isNotBlank() && (artistStr.contains(normalizedArtist) || normalizedArtist.contains(artistStr))) score += 40
-            if (normalizedAlbum.isNotBlank() && album == normalizedAlbum) score += 20
-            
-            if (durationDiff < 3) score += 30
-            else if (durationDiff < 10) score += 10
 
-            if (score > bestScore && score > 0) {
+            // QQ already ranks smartbox suggestions by relevance, and earlier
+            // items win ties via the strict `>` below. Require a title match
+            // so a wrong song never blocks the NetEase/LRCLIB fallback chain.
+            if (score > bestScore && titleScore > 0) {
                 bestScore = score
-                bestMid = song.optString("songmid")
+                bestMid = mid
             }
         }
 
@@ -272,7 +260,7 @@ class QQMusicClient {
 
     private companion object {
         const val MUSIC_U_API = "https://u.y.qq.com/cgi-bin/musicu.fcg"
-        const val QQ_MUSIC_SEARCH_API = "https://c.y.qq.com/soso/fcgi-bin/client_search_cp"
+        const val QQ_MUSIC_SEARCH_API = "https://c.y.qq.com/splcloud/fcgi-bin/smartbox_new.fcg"
         const val QQ_MUSIC_CLIENT_TYPE = 11
         const val QQ_MUSIC_CLIENT_VERSION = 14090008
         const val QQ_MUSIC_ANDROID_USER_AGENT = "QQMusic 14090008(android 15)"

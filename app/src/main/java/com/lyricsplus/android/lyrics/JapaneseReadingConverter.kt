@@ -15,17 +15,28 @@ class JapaneseReadingConverter {
         if (!text.looksJapanese()) return null
         val reading = runCatching {
             tokenizer.tokenize(text)
-                .mapNotNull { token ->
+                .map { token ->
                     val reading = token.reading
                     val source = if (reading == "*" || reading.isNullOrBlank()) token.surface else reading
-                    source.kanaToRomaji()
-                        .takeIf { romaji -> romaji.any { it in 'a'..'z' || it in 'A'..'Z' || it.isDigit() } }
+                    val romaji = source.kanaToRomaji()
+                    when {
+                        // Normal case: the token produced pronounceable romaji.
+                        romaji.any { it in 'a'..'z' || it in 'A'..'Z' || it.isDigit() } -> romaji
+                        // Kuromoji doesn't know this kanji's reading (names, slang, ateji...).
+                        // Keep the original characters instead of dropping the token, so the
+                        // line still gets an annotation instead of a gap in full-lyrics mode.
+                        token.surface.any { it.isKanji() } -> token.surface
+                        // Punctuation / symbols: drop as before.
+                        else -> null
+                    }
                 }
+                .filterNotNull()
                 .joinToString(" ")
+                .replace(Regex("\\s+"), " ")
+                .trim()
         }.getOrNull()
 
-        return reading
-            ?.takeIf { it.isNotBlank() && it != text }
+        return reading?.takeIf { it.isNotBlank() }
     }
 
     fun furiganaFor(text: String): String? {
