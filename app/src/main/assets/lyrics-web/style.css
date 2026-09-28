@@ -348,12 +348,8 @@ body {
   color: rgba(255, 255, 255, 0.58);
 }
 
-/* Romaji: hidden by default, only visible on active line */
+/* Romaji: visible on every line in full-lyrics mode */
 .stage.full-lyrics-mode .line .romaji {
-  display: none;
-}
-
-.stage.full-lyrics-mode .line.active .romaji {
   display: block;
 }
 
