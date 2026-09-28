@@ -13,7 +13,8 @@ class JapaneseReadingConverter {
 
     fun readingFor(text: String): String? {
         if (!text.looksJapanese()) return null
-        val reading = runCatching {
+        // Primary path: kuromoji dictionary-based conversion.
+        val viaDictionary = runCatching {
             tokenizer.tokenize(text)
                 .map { token ->
                     val reading = token.reading
@@ -34,9 +35,26 @@ class JapaneseReadingConverter {
                 .joinToString(" ")
                 .replace(Regex("\\s+"), " ")
                 .trim()
-        }.getOrNull()
+        }.getOrNull()?.takeIf { it.isNotBlank() }
+        if (viaDictionary != null) return viaDictionary
+        // Fallback: kuromoji is unavailable or failed on this device (its 13MB
+        // dictionary can fail to initialize on some phones). Convert kana
+        // directly without a dictionary so full-lyrics mode still shows romaji
+        // instead of leaving every non-official line blank.
+        return directKanaReadingFor(text)
+    }
 
-        return reading?.takeIf { it.isNotBlank() }
+    /**
+     * Dictionary-free kana→romaji conversion used when kuromoji fails.
+     * Kana become romaji, kanji are kept as-is, punctuation is dropped.
+     * Returns null when nothing pronounceable was produced.
+     */
+    internal fun directKanaReadingFor(text: String): String? {
+        if (!text.looksJapanese()) return null
+        val converted = text.kanaToRomaji().replace(Regex("\\s+"), " ").trim()
+        if (converted.isBlank() || converted == text) return null
+        if (!converted.any { it in 'a'..'z' || it in 'A'..'Z' }) return null
+        return converted
     }
 
     fun furiganaFor(text: String): String? {

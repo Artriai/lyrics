@@ -52,4 +52,23 @@ class JapaneseReadingConverterTest {
     fun readingForPunctuationOnlyReturnsNull() {
         assertNull(converter.readingFor("・・・"))
     }
+
+    @Test
+    fun directKanaFallbackConvertsKanaWithoutDictionary() {
+        val reading = converter.directKanaReadingFor("物語は終わり")
+        assertNotNull(reading)
+        assertTrue(reading!!.contains("ha"))
+    }
+
+    @Test
+    fun directKanaFallbackKeepsKanjiWhenNoRomajiProduced() {
+        // Pure kanji with no kana -> nothing pronounceable -> null.
+        assertNull(converter.directKanaReadingFor("夜露死苦"))
+    }
+
+    @Test
+    fun directKanaFallbackRejectsPunctuationAndNonJapanese() {
+        assertNull(converter.directKanaReadingFor("・・・"))
+        assertNull(converter.directKanaReadingFor("Hello world"))
+    }
 }
