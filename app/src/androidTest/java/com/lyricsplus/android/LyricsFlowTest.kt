@@ -98,6 +98,9 @@ class LyricsFlowTest {
             println("Full mode DOM: " + webJs(scenario, "JSON.stringify({scrollY:window.scrollY,innerHeight:innerHeight,clip:getComputedStyle(document.querySelector('.lyrics-viewport')).clipPath,padding:getComputedStyle(document.querySelector('.lyrics-viewport')).paddingTop,header:getComputedStyle(document.getElementById('stage')).getPropertyValue('--header-bottom')})"))
             screenshot(app, "06-full-lyrics")
             compose.onRoot().performTouchInput { swipeRight() }
+            compose.waitUntil(10_000) {
+                runCatching { compose.onNodeWithText("搜索歌词").assertIsDisplayed(); true }.getOrDefault(false)
+            }
             compose.onNodeWithText("搜索歌词").assertIsDisplayed()
             compose.onNodeWithText("返回").performClick()
             compose.onNodeWithText(track.track).assertIsDisplayed()

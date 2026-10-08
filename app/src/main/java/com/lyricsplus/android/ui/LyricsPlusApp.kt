@@ -281,7 +281,7 @@ private fun LyricsOverlay(
                     fontSize = 22.sp, fontWeight = FontWeight.Bold)
             }
         }
-        if (state.libraryPage != 0) LyricsLibraryPage(state, viewModel, Modifier.fillMaxSize())
+        if (state.libraryPage != 0) LyricsLibraryPage(state, viewModel, Modifier.fillMaxSize().zIndex(4f).graphicsLayer {})
     }
 }
 
