@@ -425,6 +425,7 @@ private fun MenuActionRow(
         ) {
             Text(
                 text = emoji,
+                color = Color.White,
                 fontSize = 18.sp
             )
         }
