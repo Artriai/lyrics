@@ -208,6 +208,24 @@ class LyricsProvider(
         }
     }
 
+    suspend fun searchSongs(query: String): Result<List<NowPlaying>> = withContext(Dispatchers.IO) {
+        val searches = listOf(
+            async { runCatching { neteaseClient.searchSongs(query) } },
+            async { runCatching { qqMusicClient.searchSongs(query) } },
+            async { runCatching { lrclibClient.searchSongs(query) } }
+        ).map { it.await() }
+        if (searches.all { it.isFailure }) {
+            Result.failure(searches.first().exceptionOrNull() ?: java.io.IOException("搜索失败"))
+        } else {
+            // Each source already ranks matches; preserve rank and prefer exact title matches.
+            val normalizedQuery = query.lowercase().filterNot { it.isWhitespace() }
+            Result.success(searches.flatMap { it.getOrDefault(emptyList()) }
+                .distinctBy { listOf(it.track.lowercase(), it.artist.lowercase(), it.album.lowercase()) }
+                .sortedByDescending { if (it.track.lowercase().filterNot { c -> c.isWhitespace() } == normalizedQuery) 1 else 0 }
+                .take(60))
+        }
+    }
+
     private fun String.hasJapaneseKana(): Boolean =
         any { it in '\u3040'..'\u309F' || it in '\u30A0'..'\u30FF' }
 

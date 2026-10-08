@@ -1,18 +1,18 @@
-name: Build and Release Preview APK
+name: Build and Release lyrics
 
 on:
   push:
     branches:
-      - preview
+      - lyrics
   workflow_dispatch:
 
 concurrency:
-  group: preview-release-${{ github.ref }}
+  group: lyrics-release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   build:
-    if: github.ref == 'refs/heads/preview'
+    if: github.ref == 'refs/heads/lyrics'
     timeout-minutes: 30
     name: Build & Sign Release APK
     runs-on: ubuntu-latest
@@ -52,7 +52,7 @@ jobs:
             exit 1
           fi
 
-          RELEASE_TAG="preview-v${VERSION_NAME}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          RELEASE_TAG="lyrics-v${VERSION_NAME}-build-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
 
           echo "version_name=${VERSION_NAME}" >> "${GITHUB_OUTPUT}"
           echo "tag=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
@@ -60,15 +60,15 @@ jobs:
       - name: Build with Gradle
         env:
           LYRICS_PLUS_STATS_ENDPOINT: ${{ vars.LYRICS_PLUS_STATS_ENDPOINT }}
-        run: bash scripts/assemble-official-release.sh testDebugUnitTest
+        run: bash scripts/assemble-official-release.sh testDebugUnitTest -PlyricsBuildNumber="${GITHUB_RUN_NUMBER}"
 
       - name: Name Preview APK
-        run: cp app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/lyrics-plus-preview.apk
+        run: cp app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/lyrics.apk
 
       - name: Calculate SHA-256 Hash
         id: calc_sha
         run: |
-          SHA256=$(sha256sum app/build/outputs/apk/release/lyrics-plus-preview.apk | awk '{ print $1 }')
+          SHA256=$(sha256sum app/build/outputs/apk/release/lyrics.apk | awk '{ print $1 }')
           echo "sha256=$SHA256" >> $GITHUB_OUTPUT
 
       # 步骤 4：将打包好的 APK 上传并发布到 GitHub Release，同时把 Hash 写入正文
@@ -76,24 +76,24 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            app/build/outputs/apk/release/lyrics-plus-preview.apk
-          name: Preview ${{ steps.version.outputs.tag }}
+            app/build/outputs/apk/release/lyrics.apk
+          name: lyrics ${{ steps.version.outputs.tag }}
           tag_name: ${{ steps.version.outputs.tag }}
           target_commitish: ${{ github.sha }}
           body: |
-            ## 📦 Preview ${{ steps.version.outputs.tag }}
+            ## 📦 lyrics ${{ steps.version.outputs.tag }}
             
-            Branch: `preview`
+            Branch: `lyrics`
             Commit: `${{ github.sha }}`
-            This is a preview build. It uses the same application ID and signing key as the stable app.
+            Standalone lyric cue board. Installs alongside Lyrics Plus; no Spotify or notification access required.
 
             ### 🔒 文件校验和 (SHA-256 Checksums)
-            * **lyrics-plus-preview.apk**: `${{ steps.calc_sha.outputs.sha256 }}`
+            * **lyrics.apk**: `${{ steps.calc_sha.outputs.sha256 }}`
             
             > [!TIP]
             > **安全提示：** 您可以在本地运行命令来验证下载的 APK 文件的完整性：
-            > * **Windows (PowerShell):** `Get-FileHash lyrics-plus-preview.apk -Algorithm SHA256`
-            > * **Linux / macOS:** `sha256sum lyrics-plus-preview.apk`
+            > * **Windows (PowerShell):** `Get-FileHash lyrics.apk -Algorithm SHA256`
+            > * **Linux / macOS:** `sha256sum lyrics.apk`
           draft: false
           prerelease: true
           make_latest: false

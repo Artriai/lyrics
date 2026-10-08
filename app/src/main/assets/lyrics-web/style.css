@@ -524,3 +524,16 @@ rt {
   -webkit-background-clip: text !important;
   -webkit-text-fill-color: transparent !important;
 }
+
+/* Only visible while calibrating the cue clock; normal lyric styling stays intact. */
+.stage { -webkit-user-select: none; user-select: none; }
+.cue-position-badge {
+  position: fixed; left: 50%; bottom: calc(32px + env(safe-area-inset-bottom));
+  transform: translateX(-50%); z-index: 30; white-space: nowrap;
+  padding: 12px 20px; border-radius: 16px;
+  color: #101010; background: #4ad295;
+  font: 700 15px system-ui, sans-serif; pointer-events: none;
+  box-shadow: 0 8px 30px #0004;
+}
+.cue-position-badge[hidden] { display: none; }
+.cue-scrubbing, .cue-scrubbing .lyrics-viewport { overflow: hidden !important; }

@@ -80,6 +80,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.ui.res.painterResource
 import com.lyricsplus.android.R
+import com.lyricsplus.android.data.libraryKey
 
 private val AppBackground = Color(0xFF101010)
 private val Accent = Color(0xFF4AD295)
@@ -90,9 +91,7 @@ private val TextMuted = Color(0x998D9490)
 @Composable
 fun LyricsPlusApp(
     viewModel: MainViewModel,
-    webController: LyricsWebController,
-    onOpenSpotify: () -> Unit,
-    onOpenNotificationAccess: () -> Unit
+    webController: LyricsWebController
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
@@ -101,8 +100,8 @@ fun LyricsPlusApp(
             state = uiState,
             webController = webController,
             viewModel = viewModel,
-            onOpenSpotify = onOpenSpotify,
-            onOpenNotificationAccess = onOpenNotificationAccess
+            onOpenSearch = viewModel::openSearch,
+            onOpenLibrary = viewModel::openLibrary
         )
     }
 }
@@ -112,8 +111,8 @@ private fun LyricsOverlay(
     state: LyricsUiState,
     webController: LyricsWebController,
     viewModel: MainViewModel,
-    onOpenSpotify: () -> Unit,
-    onOpenNotificationAccess: () -> Unit
+    onOpenSearch: () -> Unit,
+    onOpenLibrary: () -> Unit
 ) {
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -297,8 +296,8 @@ private fun LyricsOverlay(
         if (!isInitializing && (!hasTrack || (state.lyrics.isEmpty() && showOverlay))) {
             EmptyOverlay(
                 state = state,
-                onOpenSpotify = onOpenSpotify,
-                onOpenNotificationAccess = onOpenNotificationAccess,
+                onOpenSearch = onOpenSearch,
+                onOpenLibrary = onOpenLibrary,
                 modifier = Modifier
                     .fillMaxSize()
                     .background(AppBackground)
@@ -560,8 +559,18 @@ private fun LyricsOverlay(
                                     horizontalAlignment = Alignment.End,
                                     verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    MenuActionRow(label = "立刻同步", emoji = "🔄") {
-                                        viewModel.forceSyncTime()
+                                    MenuActionRow(label = "歌词列表", emoji = "☰") {
+                                        isExpanded = false
+                                        viewModel.openLibrary()
+                                    }
+                                    val currentSong = state.library.firstOrNull { it.key == state.nowPlaying.libraryKey() }
+                                    if (currentSong != null) {
+                                        MenuActionRow(label = if (currentSong.favorite) "取消收藏" else "收藏歌词", emoji = if (currentSong.favorite) "★" else "☆") {
+                                            viewModel.toggleFavorite(currentSong)
+                                        }
+                                    }
+                                    MenuActionRow(label = "从头提词", emoji = "🔄") {
+                                        viewModel.restartCue()
                                     }
                                     MenuActionRow(label = "切换歌词源 [当前: ${state.activeLyricsSource}]", emoji = "🎵") {
                                         viewModel.switchLyricsSource()
@@ -600,20 +609,6 @@ private fun LyricsOverlay(
                                     ) {
                                         viewModel.toggleKeepScreenOn()
                                     }
-                                    MenuActionRow(
-                                        label = if (state.showFloatingLyrics) "桌面歌词: 开启" else "桌面歌词: 关闭",
-                                        emoji = "📱",
-                                        active = state.showFloatingLyrics
-                                    ) {
-                                        viewModel.toggleFloatingLyrics()
-                                    }
-                                    MenuActionRow(
-                                        label = if (state.showSuperIslandLyrics) "小米超级岛歌词: 开启" else "小米超级岛歌词: 关闭",
-                                        emoji = "🏝",
-                                        active = state.showSuperIslandLyrics
-                                    ) {
-                                        viewModel.toggleSuperIslandLyrics()
-                                    }
                                 }
                             }
                         }
@@ -622,8 +617,18 @@ private fun LyricsOverlay(
                             horizontalAlignment = Alignment.End,
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            MenuActionRow(label = "立刻同步", emoji = "🔄") {
-                                viewModel.forceSyncTime()
+                            MenuActionRow(label = "歌词列表", emoji = "☰") {
+                                        isExpanded = false
+                                        viewModel.openLibrary()
+                                    }
+                                    val currentSong = state.library.firstOrNull { it.key == state.nowPlaying.libraryKey() }
+                                    if (currentSong != null) {
+                                        MenuActionRow(label = if (currentSong.favorite) "取消收藏" else "收藏歌词", emoji = if (currentSong.favorite) "★" else "☆") {
+                                            viewModel.toggleFavorite(currentSong)
+                                        }
+                                    }
+                                    MenuActionRow(label = "从头提词", emoji = "🔄") {
+                                viewModel.restartCue()
                             }
                             MenuActionRow(label = "切换歌词源 [当前: ${state.activeLyricsSource}]", emoji = "🎵") {
                                 viewModel.switchLyricsSource()
@@ -655,20 +660,6 @@ private fun LyricsOverlay(
                                 active = state.keepScreenOn
                             ) {
                                 viewModel.toggleKeepScreenOn()
-                            }
-                            MenuActionRow(
-                                label = if (state.showFloatingLyrics) "桌面歌词: 开启" else "桌面歌词: 关闭",
-                                emoji = "📱",
-                                active = state.showFloatingLyrics
-                            ) {
-                                viewModel.toggleFloatingLyrics()
-                            }
-                            MenuActionRow(
-                                label = if (state.showSuperIslandLyrics) "小米超级岛歌词: 开启" else "小米超级岛歌词: 关闭",
-                                emoji = "🏝",
-                                active = state.showSuperIslandLyrics
-                            ) {
-                                viewModel.toggleSuperIslandLyrics()
                             }
                             MenuActionRow(label = "关于项目", emoji = "ℹ") {
                                 isExpanded = false
@@ -768,6 +759,10 @@ private fun LyricsOverlay(
             }
         }
 
+        if (state.libraryPage != 0) {
+            LyricsLibraryPage(state, viewModel, Modifier.fillMaxSize())
+        }
+
         if (showAboutPage) {
             AboutProjectPage(
                 onCheckUpdates = { viewModel.checkForUpdates() },
@@ -832,8 +827,8 @@ private fun DebugOverlay(message: String, modifier: Modifier = Modifier) {
 @Composable
 private fun EmptyOverlay(
     state: LyricsUiState,
-    onOpenSpotify: () -> Unit,
-    onOpenNotificationAccess: () -> Unit,
+    onOpenSearch: () -> Unit,
+    onOpenLibrary: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val hasTrack = state.nowPlaying.hasTrack
@@ -855,7 +850,7 @@ private fun EmptyOverlay(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "纯音乐 / 无歌词",
+                    text = state.message,
                     color = Color(0xB3FFFFFF),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
@@ -903,25 +898,25 @@ private fun EmptyOverlay(
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    text = "${state.playbackSource} - ${state.playback.positionMs / 1000}s",
+                    text = "左滑进入列表 · 长按歌词拖动调整进度",
                     color = Color(0xFF8D9490),
                     fontSize = 14.sp
                 )
                 Spacer(modifier = Modifier.height(22.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Button(
-                        onClick = onOpenSpotify,
+                        onClick = onOpenSearch,
                         colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color.Black),
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text("打开 Spotify")
+                        Text("搜索歌词")
                     }
                     Button(
-                        onClick = onOpenNotificationAccess,
+                        onClick = onOpenLibrary,
                         colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Color.White),
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text("通知访问权限")
+                        Text("歌词列表")
                     }
                 }
             }

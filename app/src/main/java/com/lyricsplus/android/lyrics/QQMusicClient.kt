@@ -100,6 +100,21 @@ class QQMusicClient {
         return unescaped.replace("__NEWLINE_PLACEHOLDER__", "\n")
     }
 
+    suspend fun searchSongs(query: String): List<NowPlaying> = withContext(Dispatchers.IO) {
+        val url = QQ_MUSIC_SEARCH_API.toHttpUrl().newBuilder()
+            .addQueryParameter("key", query).addQueryParameter("format", "json")
+            .addQueryParameter("g_tk", "5381").addQueryParameter("uin", "0").build()
+        val response = requestGet(url.toString())
+        check(response.code in 200..299) { "QQ 音乐搜索失败 (${response.code})" }
+        val json = JSONObject(response.body)
+        check(json.optInt("code", -1) == 0) { "QQ 音乐搜索暂不可用" }
+        val songs = json.optJSONObject("data")?.optJSONObject("song")?.optJSONArray("itemlist")
+            ?: return@withContext emptyList()
+        (0 until songs.length()).map { songs.getJSONObject(it) }.map {
+            NowPlaying(track = it.optString("name"), artist = it.optString("singer").replace("/", " "))
+        }.filter { it.track.isNotBlank() }
+    }
+
     private fun searchSongMid(track: NowPlaying): QQMusicSearchResult? {
         val query = "${track.track} ${track.artist}"
 

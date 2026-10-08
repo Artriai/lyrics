@@ -40,11 +40,12 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.lyricsplus.android"
+        applicationId = "com.lyricsplus.lyrics"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "1.4.2"
+        versionCode = 1000 + (providers.gradleProperty("lyricsBuildNumber").orNull?.toIntOrNull() ?: 0)
+        versionName = "1.0.0"
+        buildConfigField("long", "LYRICS_BUILD_NUMBER", "${providers.gradleProperty("lyricsBuildNumber").orNull?.toLongOrNull() ?: 0L}L")
         
         resConfigs("en", "zh", "zh-rCN", "zh-rTW", "zh-rHK")
     }
@@ -52,7 +53,6 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
-        aidl = true
     }
 
     compileOptions {
@@ -124,9 +124,6 @@ dependencies {
     implementation("com.atilika.kuromoji:kuromoji-ipadic:0.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.palette:palette:1.0.0")
-    implementation("com.xzakota.hyper.notification:focus-api:1.4")
-    implementation("dev.rikka.shizuku:api:13.1.5")
-    implementation("dev.rikka.shizuku:provider:13.1.5")
 
     testImplementation("junit:junit:4.13.2")
 

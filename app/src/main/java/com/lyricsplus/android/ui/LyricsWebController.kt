@@ -35,6 +35,11 @@ class LyricsWebController(context: Context) {
     var isFullLyricsMode by mutableStateOf(false)
         private set
 
+    var onOpenLibrary: () -> Unit = {}
+    var onBeginScrub: () -> Unit = {}
+    var onSeekCue: (Long) -> Unit = {}
+    var onEndScrub: () -> Unit = {}
+
     val webView: WebView = WebView(context).apply {
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
         logDebug("create native WebView")
@@ -43,7 +48,7 @@ class LyricsWebController(context: Context) {
         settings.domStorageEnabled = false
         settings.allowFileAccess = true
         settings.allowContentAccess = false
-        addJavascriptInterface(LyricsWebBridge(::setDebug, ::setFullMode), "AndroidLyrics")
+        addJavascriptInterface(LyricsWebBridge(::setDebug, ::setFullMode, { onOpenLibrary() }, { onBeginScrub() }, { onSeekCue(it) }, { onEndScrub() }), "AndroidLyrics")
         overScrollMode = WebView.OVER_SCROLL_NEVER
         isVerticalScrollBarEnabled = false
         isHorizontalScrollBarEnabled = false
@@ -102,7 +107,7 @@ class LyricsWebController(context: Context) {
 
     fun pushPlayback(positionMs: Long, isPlaying: Boolean) {
         if (!isReady) return
-        webView.evaluateJavascript("window.LyricsPlus.setPlaybackState($positionMs, $isPlaying)", null)
+        webView.evaluateJavascript("window.LyricsPlus.setPlaybackState($positionMs, $isPlaying, true)", null)
     }
 
     fun pushReadingMode(mode: Int) {
@@ -173,9 +178,27 @@ class LyricsWebController(context: Context) {
 
 private class LyricsWebBridge(
     private val onDebug: (String) -> Unit,
-    private val onFullLyricsMode: (Boolean) -> Unit
+    private val onFullLyricsMode: (Boolean) -> Unit,
+    private val onOpenLibrary: () -> Unit,
+    private val onBeginScrub: () -> Unit,
+    private val onSeekCue: (Long) -> Unit,
+    private val onEndScrub: () -> Unit
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    @JavascriptInterface
+    fun openLibrary() { mainHandler.post { onOpenLibrary() } }
+
+    @JavascriptInterface
+    fun beginScrub() { mainHandler.post { onBeginScrub() } }
+
+    @JavascriptInterface
+    fun seekCue(positionMs: Double) {
+        if (positionMs.isFinite()) mainHandler.post { onSeekCue(positionMs.toLong()) }
+    }
+
+    @JavascriptInterface
+    fun endScrub() { mainHandler.post { onEndScrub() } }
 
     @JavascriptInterface
     fun report(message: String) {

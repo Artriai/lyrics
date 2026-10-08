@@ -91,8 +91,8 @@
       var endColor = (track && track.backgroundEnd) || hashColor(seed + " deep", 42, 24);
       var accentColor = (track && track.backgroundAccent) || hashColor(seed + " accent", 74, 62);
       state.track = track || null;
-      trackTitleEl.textContent = (track && track.track) || "Lyrics Plus";
-      trackArtistEl.textContent = (track && track.artist) || "等待 Spotify";
+      trackTitleEl.textContent = (track && track.track) || "lyrics";
+      trackArtistEl.textContent = (track && track.artist) || "选择一首歌";
       stageEl.style.setProperty("--bg-a", startColor);
       stageEl.style.setProperty("--bg-b", endColor);
       stageEl.style.setProperty("--bg-c", accentColor);
@@ -138,7 +138,7 @@
     }
   }
 
-  function setPlaybackState(positionMs, isPlaying) {
+  function setPlaybackState(positionMs, isPlaying, forcePosition) {
     try {
       var wasPlaying = playback.isPlaying;
       var newIsPlaying = !!isPlaying;
@@ -175,7 +175,7 @@
           // Already paused: ignore minor position updates (such as duplicate pause reports from Android)
           // only accept seeks (changes > 1.5s)
           var diff = Math.abs(playback.positionMs - targetPos);
-          if (diff > 1500) {
+          if (diff > 1500 || forcePosition) {
             playback.positionMs = targetPos;
             playback.visualOffset = 0;
           } else {
@@ -1052,8 +1052,103 @@
     report("error:" + message + "@" + line);
   };
 
+  // Standalone cue controls. Tap still toggles the existing full/focused renderer.
+  var cueTouch = null;
+  var cueHoldTimer = null;
+  var suppressClickUntil = 0;
+  var cueBadge = document.createElement("div");
+  cueBadge.className = "cue-position-badge";
+  cueBadge.hidden = true;
+  document.body.appendChild(cueBadge);
+
+  function cueBridge(method, value) {
+    if (window.AndroidLyrics && typeof window.AndroidLyrics[method] === "function") {
+      if (value === undefined) window.AndroidLyrics[method]();
+      else window.AndroidLyrics[method](value);
+    }
+  }
+
+  function clearCueHold() {
+    if (cueHoldTimer !== null) clearTimeout(cueHoldTimer);
+    cueHoldTimer = null;
+  }
+
+  function cuePositionPreview(position) {
+    var duration = Math.max(Number((state.track || {}).durationSeconds || 0) * 1000,
+      state.lyrics.length ? Number(state.lyrics[state.lyrics.length - 1].startTimeMs) + 8000 : 0);
+    var clamped = Math.max(0, Math.min(duration, position));
+    // This is a seek, including jumps smaller than 1.5 seconds while paused.
+    setPlaybackState(clamped, false, true);
+    cueBridge("seekCue", clamped);
+    var seconds = Math.floor(clamped / 1000);
+    cueBadge.textContent = "↕ " + Math.floor(seconds / 60) + ":" + ("0" + (seconds % 60)).slice(-2) + " · 松手继续";
+  }
+
+  stageEl.addEventListener("contextmenu", function (event) { event.preventDefault(); });
+  stageEl.addEventListener("touchstart", function (event) {
+    if (event.touches.length !== 1) return;
+    var touch = event.touches[0];
+    var position = playback.positionMs + (playback.isPlaying ? performance.now() - playback.updatedAt : 0);
+    cueTouch = { x: touch.clientX, y: touch.clientY, dx: 0, dy: 0, position: position, scrubbing: false };
+    clearCueHold();
+    if (!state.lyrics.length) return;
+    var pressedLine = event.target.closest ? event.target.closest(".line") : null;
+    if (!pressedLine) return;
+    cueHoldTimer = setTimeout(function () {
+      if (!cueTouch) return;
+      cueTouch.scrubbing = true;
+      suppressClickUntil = Date.now() + 1000;
+      cueTouch.position = playback.positionMs + (playback.isPlaying ? performance.now() - playback.updatedAt : 0);
+      // Keep the original time on hold; upward drag advances, downward drag rewinds.
+      cueBridge("beginScrub");
+      stageEl.classList.add("cue-scrubbing");
+      cueBadge.hidden = false;
+      cuePositionPreview(cueTouch.position);
+    }, 450);
+  }, { passive: true });
+
+  stageEl.addEventListener("touchmove", function (event) {
+    if (!cueTouch) return;
+    if (event.touches.length !== 1) { finishCueTouch(true); return; }
+    cueTouch.dx = event.touches[0].clientX - cueTouch.x;
+    cueTouch.dy = event.touches[0].clientY - cueTouch.y;
+    if (cueTouch.scrubbing) {
+      event.preventDefault();
+      cuePositionPreview(cueTouch.position - cueTouch.dy * 120);
+    } else {
+      if (Math.abs(cueTouch.dx) > 10 || Math.abs(cueTouch.dy) > 10) clearCueHold();
+      if (Math.abs(cueTouch.dx) > 16 && Math.abs(cueTouch.dx) > Math.abs(cueTouch.dy) * 1.5) {
+        event.preventDefault();
+      }
+    }
+  }, { passive: false });
+
+  function finishCueTouch(cancelled) {
+    clearCueHold();
+    if (!cueTouch) return;
+    if (cueTouch.scrubbing) {
+      suppressClickUntil = Date.now() + 1000;
+      cueBridge("endScrub");
+      stageEl.classList.remove("cue-scrubbing");
+      cueBadge.hidden = true;
+      userScrolling = false;
+      if (scrollResumeTimer !== null) clearTimeout(scrollResumeTimer);
+      scrollResumeTimer = null;
+    } else if (!cancelled && cueTouch.dx < -70 && Math.abs(cueTouch.dx) > Math.abs(cueTouch.dy) * 1.5) {
+      suppressClickUntil = Date.now() + 1000;
+      cueBridge("openLibrary");
+    } else if (Math.abs(cueTouch.dx) > 10 || Math.abs(cueTouch.dy) > 10) {
+      suppressClickUntil = Date.now() + 500;
+    }
+    cueTouch = null;
+  }
+  stageEl.addEventListener("touchend", function () { finishCueTouch(false); }, { passive: true });
+  stageEl.addEventListener("touchcancel", function () { finishCueTouch(true); }, { passive: true });
+  window.addEventListener("blur", function () { finishCueTouch(true); });
+
   // Click handler to toggle mode
   stageEl.addEventListener("click", function (e) {
+    if (Date.now() < suppressClickUntil) return;
     if (state.lyrics.length > 0) {
       toggleFullLyricsMode();
     }

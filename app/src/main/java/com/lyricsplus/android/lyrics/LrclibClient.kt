@@ -17,6 +17,16 @@ class LrclibClient {
         }
     }
 
+    suspend fun searchSongs(query: String): List<NowPlaying> = withContext(Dispatchers.IO) {
+        val response = request("https://lrclib.net/api/search?q=" + query.urlEncode())
+        check(response.code in 200..299) { "LRCLIB 搜索失败 (${response.code})" }
+        val songs = JSONArray(response.body)
+        (0 until songs.length()).map { songs.getJSONObject(it) }
+            .filter { it.optString("syncedLyrics").isNotBlank() || it.optString("enhancedLyrics").isNotBlank() }
+            .map { NowPlaying(track = it.optString("trackName"), artist = it.optString("artistName"),
+                album = it.optString("albumName"), durationSeconds = kotlin.math.round(it.optDouble("duration", 0.0)).toInt()) }
+    }
+
     private fun fetchExact(track: NowPlaying): LyricsSearchResult? {
         val query = buildString {
             append("https://lrclib.net/api/get")
