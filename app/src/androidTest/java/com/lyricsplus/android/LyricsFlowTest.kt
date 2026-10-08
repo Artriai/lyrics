@@ -1,6 +1,7 @@
 package com.lyricsplus.android
 
 import android.graphics.Bitmap
+import androidx.compose.ui.geometry.Offset
 import android.content.ContentValues
 import android.provider.MediaStore
 import androidx.compose.ui.platform.ComposeView
@@ -42,7 +43,7 @@ class LyricsFlowTest {
         val db = LyricsCacheDatabase(app)
         db.saveLyrics(track.libraryKey(), listOf(
             LyricsLine(0, "让歌词跟着节奏", "保留熟悉的界面与动效"),
-            LyricsLine(4000, "这一句正在唱", "长按拖动校准提词时间"),
+            LyricsLine(4000, "这一句正在唱", "上下滑动调整提词时间"),
             LyricsLine(8000, "下一句慢慢出现", "左右滑动进入歌词列表")
         ), "网易云音乐")
         db.saveLibrarySong(track, "网易云音乐")
@@ -60,20 +61,19 @@ class LyricsFlowTest {
                 compose.onAllNodesWithContentDescription("取消收藏 ${track.track}").fetchSemanticsNodes().isNotEmpty()
             }
             assertTrue(LyricsCacheDatabase(app).librarySongs().single().favorite)
-            compose.onNodeWithContentDescription("管理 ${track.track}").performClick()
-            compose.onNodeWithText("删除歌词").assertIsDisplayed()
-            screenshot(app, "04-song-menu")
-            compose.onNodeWithText("删除歌词").performClick()
+            compose.onNodeWithText(track.track).performTouchInput { swipeLeft() }
+            compose.onNodeWithText("删除这首歌词？").assertIsDisplayed()
+            screenshot(app, "04-swipe-delete")
             compose.onNodeWithText("取消").performClick()
             compose.onNodeWithText(track.track).assertIsDisplayed()
 
-            compose.onNodeWithText("提词 ›").performClick()
+            back(scenario)
             compose.onNodeWithText("搜索歌词").performClick()
             compose.onNodeWithText("搜索歌词").assertIsDisplayed()
             compose.onNode(hasSetTextAction()).performTextInput("周杰伦")
             compose.onNodeWithText("周杰伦").assertIsDisplayed()
             screenshot(app, "02-search")
-            compose.onNodeWithText("返回").performClick()
+            back(scenario)
             compose.onNodeWithText("让歌词跟着你").assertIsDisplayed()
             compose.onRoot().performTouchInput { swipeLeft() }
             compose.onNodeWithText(track.track).performClick()
@@ -86,23 +86,42 @@ class LyricsFlowTest {
             compose.onNodeWithContentDescription("设置").assertIsDisplayed().performClick()
             compose.onAllNodesWithText("从头提词").assertCountEquals(0)
             compose.onAllNodesWithText("歌词提前").assertCountEquals(0)
-            compose.onAllNodesWithText("关于项目").assertCountEquals(0)
+            compose.onNodeWithText("关于项目").assertIsDisplayed()
+            compose.onAllNodesWithText("检查更新").assertCountEquals(0)
+            compose.onAllNodesWithText("屏幕常亮 · 开启").assertCountEquals(0)
             screenshot(app, "05-settings")
-            compose.onNodeWithText("全部歌词").performClick()
-            compose.onNodeWithContentDescription("关闭设置").performClick()
+            compose.onNodeWithText("关于项目").performClick()
+            compose.onNodeWithText("项目地址").assertIsDisplayed()
+            compose.onNodeWithText("检查更新").assertIsDisplayed()
+            compose.onRoot().performTouchInput { click(Offset(width * .5f, height * .8f)) }
+            compose.waitUntil(1000) { compose.onAllNodesWithText("★").fetchSemanticsNodes().isNotEmpty() }
+            screenshot(app, "08-about")
+            back(scenario)
+            compose.onNodeWithContentDescription("设置").assertIsDisplayed()
+            // A normal vertical swipe, without a hold, adjusts focused lyric time.
+            compose.onRoot().performTouchInput {
+                swipe(Offset(width * .3f, height * .7f), Offset(width * .3f, height * .5f), 250)
+            }
+            compose.waitUntil(10_000) { app.getSharedPreferences("lyrics_plus_prefs", 0).getLong("last_position", 0) > 0 }
+            webJs(scenario, "window.LyricsPlus.toggleMode()")
             compose.waitUntil(10_000) { webJs(scenario, "document.getElementById('stage').classList.contains('full-lyrics-mode')") == "true" }
+            Thread.sleep(1100) // Ignore the compatibility click after the preceding swipe.
             webJs(scenario, "document.querySelector('.line[data-index=\"2\"]').click()")
             compose.waitUntil(10_000) { app.getSharedPreferences("lyrics_plus_prefs", 0).getLong("last_position", -1) == 8000L }
-            compose.onNodeWithContentDescription("开始提词").assertIsDisplayed()
+            compose.onAllNodesWithContentDescription("开始提词").assertCountEquals(0)
+            compose.onAllNodesWithText(track.track).assertCountEquals(0)
             assertEquals("2", webJs(scenario, "document.querySelector('.line.active').dataset.index").trim('\"'))
             println("Full mode DOM: " + webJs(scenario, "JSON.stringify({scrollY:window.scrollY,innerHeight:innerHeight,clip:getComputedStyle(document.querySelector('.lyrics-viewport')).clipPath,padding:getComputedStyle(document.querySelector('.lyrics-viewport')).paddingTop,header:getComputedStyle(document.getElementById('stage')).getPropertyValue('--header-bottom')})"))
             screenshot(app, "06-full-lyrics")
+            back(scenario)
+            compose.waitUntil(10_000) { webJs(scenario, "document.getElementById('stage').classList.contains('full-lyrics-mode')") == "false" }
+            compose.onNodeWithContentDescription("开始提词").assertIsDisplayed()
             compose.onRoot().performTouchInput { swipeRight() }
             compose.waitUntil(10_000) {
                 runCatching { compose.onNodeWithText("搜索歌词").assertIsDisplayed(); true }.getOrDefault(false)
             }
             compose.onNodeWithText("搜索歌词").assertIsDisplayed()
-            compose.onNodeWithText("返回").performClick()
+            back(scenario)
             compose.onNodeWithText(track.track).assertIsDisplayed()
 
             // Reopen to verify saved lyrics, favorite and selected song survive activity recreation.
@@ -133,6 +152,11 @@ class LyricsFlowTest {
             compose.onNodeWithText(track.track).assertIsDisplayed()
             screenshot(app, "07-search-sources")
         } finally { scenario.close() }
+    }
+
+    private fun back(scenario: ActivityScenario<MainActivity>) {
+        scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        compose.waitForIdle()
     }
 
     private fun webJs(scenario: ActivityScenario<MainActivity>, script: String): String {
@@ -184,7 +208,7 @@ class LyricsFlowTest {
             assertTrue("The main lyric text must be painted", brightPixels > 100)
             assertTrue("The original gradient must be painted", backgroundPixels > 1000)
         }
-        if (name == "03-lyrics" || name == "06-full-lyrics") {
+        if (name == "03-lyrics") {
             val bounds = compose.onNodeWithContentDescription("取消收藏当前歌曲").fetchSemanticsNode().boundsInRoot
             var green = 0
             for (y in bounds.top.toInt().coerceAtLeast(0) until bounds.bottom.toInt().coerceAtMost(screenshot.height)) {
@@ -196,7 +220,7 @@ class LyricsFlowTest {
                     if (g > 130 && g > r * 1.4 && g > b * 1.1) green++
                 }
             }
-            assertTrue("Permanent native controls must be painted above the WebView in both modes", green > 20)
+            assertTrue("Focused controls must be painted above the WebView", green > 20)
         }
     }
 }

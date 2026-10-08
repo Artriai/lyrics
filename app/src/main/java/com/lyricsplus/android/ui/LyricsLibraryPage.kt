@@ -31,6 +31,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import com.lyricsplus.android.LyricsUiState
 import com.lyricsplus.android.MainViewModel
 import com.lyricsplus.android.data.LibrarySong
@@ -73,18 +75,13 @@ fun LyricsLibraryPage(state: LyricsUiState, viewModel: MainViewModel, modifier: 
             Column(Modifier.weight(1f)) {
                 Text(if (searching) "搜索歌词" else "歌词列表", color = Color.White,
                     fontSize = 30.sp, lineHeight = 38.sp, fontWeight = FontWeight.ExtraBold)
-                Text(if (searching) "找一首想唱的歌" else "${state.library.size} 首已保存 · 随时开始提词",
-                    color = LibraryMuted, fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp))
-            }
-            TextButton(onClick = { keyboard?.hide(); viewModel.backFromLibrary() }) {
-                Text(if (searching) "返回" else "提词 ›", color = LibraryAccent, fontWeight = FontWeight.Bold)
             }
         }
 
         if (searching) {
             OutlinedTextField(
                 value = state.searchQuery, onValueChange = viewModel::updateSearchQuery,
-                placeholder = { Text("歌名或歌手") }, singleLine = true,
+                placeholder = { Text("歌名、歌手，或一起输入") }, singleLine = true,
                 modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp),
                 colors = libraryFieldColors(),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
@@ -97,8 +94,7 @@ fun LyricsLibraryPage(state: LyricsUiState, viewModel: MainViewModel, modifier: 
                     }
                 }
             )
-            Text("标签为匹配来源，加载时自动选择合适的歌词", color = LibraryMuted,
-                fontSize = 12.sp, modifier = Modifier.padding(top = 12.dp, bottom = 20.dp))
+            Spacer(Modifier.height(16.dp))
             AnimatedVisibility(state.isSearching, enter = fadeIn(), exit = fadeOut()) {
                 Row(Modifier.padding(vertical = 16.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -137,8 +133,9 @@ fun LyricsLibraryPage(state: LyricsUiState, viewModel: MainViewModel, modifier: 
                     placeholder = { Text("筛选已保存歌词") }, modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
                     shape = RoundedCornerShape(14.dp), colors = libraryFieldColors())
             }
-            val songs = state.library.filter { (!favoritesOnly || it.favorite) &&
-                (filter.isBlank() || "${it.track.track} ${it.track.artist}".contains(filter, ignoreCase = true)) }
+            val terms = filter.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+            val songs = state.library.filter { song -> (!favoritesOnly || song.favorite) &&
+                terms.all { "${song.track.track} ${song.track.artist}".contains(it, ignoreCase = true) } }
             if (songs.isEmpty()) {
                 Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.Center) {
                     Text(when { state.library.isEmpty() -> "还没有保存的歌词"; favoritesOnly -> "还没有收藏的歌词"; else -> "没有匹配的歌曲" },
@@ -155,6 +152,7 @@ fun LyricsLibraryPage(state: LyricsUiState, viewModel: MainViewModel, modifier: 
                 LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(bottom = 24.dp)) {
                     items(songs, key = { it.key }) { song ->
+                        SwipeSongRow(onDelete = { removeTarget = song }) {
                         SongRow(song.track, state.nowPlaying.libraryKey() == song.key,
                             onSelect = { keyboard?.hide(); viewModel.selectSong(song.track) },
                             trailing = {
@@ -162,17 +160,8 @@ fun LyricsLibraryPage(state: LyricsUiState, viewModel: MainViewModel, modifier: 
                                     modifier = Modifier.semantics { contentDescription = if (song.favorite) "取消收藏 ${song.track.track}" else "收藏 ${song.track.track}" }) {
                                     Text(if (song.favorite) "★" else "☆", color = if (song.favorite) LibraryAccent else LibraryMuted, fontSize = 24.sp)
                                 }
-                                var expanded by remember { mutableStateOf(false) }
-                                Box {
-                                    TextButton(onClick = { expanded = true },
-                                        modifier = Modifier.semantics { contentDescription = "管理 ${song.track.track}" }) {
-                                        Text("⋯", color = LibraryMuted, fontSize = 22.sp)
-                                    }
-                                    DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
-                                        DropdownMenuItem(text = { Text("删除歌词") }, onClick = { expanded = false; removeTarget = song })
-                                    }
-                                }
                             })
+                        }
                     }
                 }
             }
@@ -185,6 +174,26 @@ fun LyricsLibraryPage(state: LyricsUiState, viewModel: MainViewModel, modifier: 
             confirmButton = { TextButton(onClick = { viewModel.removeSong(song); removeTarget = null }) { Text("删除", color = LibraryAccent) } },
             dismissButton = { TextButton(onClick = { removeTarget = null }) { Text("取消", color = LibraryMuted) } })
     }
+    }
+}
+
+@Composable
+private fun SwipeSongRow(onDelete: () -> Unit, content: @Composable () -> Unit) {
+    var distance by remember { mutableFloatStateOf(0f) }
+    Box(Modifier.fillMaxWidth().background(Color(0xFF5B292D), RoundedCornerShape(18.dp))) {
+        Row(Modifier.matchParentSize().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically) {
+            Text("删除", color = Color.White, fontSize = 14.sp)
+            Text("删除", color = Color.White, fontSize = 14.sp)
+        }
+        Box(Modifier.offset { IntOffset(distance.roundToInt(), 0) }.pointerInput(Unit) {
+            detectHorizontalDragGestures(
+                onDragStart = { distance = 0f },
+                onHorizontalDrag = { change, amount -> change.consume(); distance += amount },
+                onDragCancel = { distance = 0f },
+                onDragEnd = { if (kotlin.math.abs(distance) > 80.dp.toPx()) onDelete(); distance = 0f }
+            )
+        }) { content() }
     }
 }
 
