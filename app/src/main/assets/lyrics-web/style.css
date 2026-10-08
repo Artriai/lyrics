@@ -537,3 +537,6 @@ rt {
 }
 .cue-position-badge[hidden] { display: none; }
 .cue-scrubbing, .cue-scrubbing .lyrics-viewport { overflow: hidden !important; }
+/* Focused lyrics were previously pointer-transparent. Enable their hold gesture
+   without changing layout, while empty areas still reach the stage swipe handler. */
+.stage:not(.full-lyrics-mode) .line { pointer-events: auto; }
