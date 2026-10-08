@@ -344,7 +344,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             state.copy(autoCheckUpdatesEnabled = nextVal)
         }
         if (nextVal) {
-            maybeCheckForUpdatesAutomatically()
+            checkForUpdates(silent = true)
         }
     }
 

@@ -863,6 +863,9 @@ private fun EmptyOverlay(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                Button(onClick = onOpenSearch, modifier = Modifier.padding(top = 22.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color.Black),
+                    shape = RoundedCornerShape(8.dp)) { Text("选择其他歌曲") }
             }
         } else if (hasTrack && isLoading) {
             // Loading lyrics state
@@ -1424,4 +1427,13 @@ private fun AlbumArtView(
             }
         }
     }
+}
+
+// Shared by the lyric controls; retained when the retired floating overlay was removed.
+fun Modifier.noRippleClickable(onClick: () -> Unit): Modifier = composed {
+    this.clickable(
+        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+        indication = null,
+        onClick = onClick
+    )
 }
