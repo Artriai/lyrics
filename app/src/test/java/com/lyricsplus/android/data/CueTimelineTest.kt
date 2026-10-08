@@ -24,6 +24,18 @@ class CueTimelineTest {
         assertEquals(15_000L, paused.positionAt(90_000))
     }
 
+    @Test fun scrubbingToTheEndStopsWithoutRestarting() {
+        val atEnd = CueTimeline(durationMs = 10_000).seek(10_000, 1000).finishScrub(true, 1000)
+        assertFalse(atEnd.running)
+        assertEquals(10_000L, atEnd.positionAt(3000))
+    }
+
+    @Test fun scrubbingRestoresThePreviousPlayingState() {
+        val middle = CueTimeline(durationMs = 10_000).seek(5000, 1000)
+        assertTrue(middle.finishScrub(true, 1000).running)
+        assertFalse(middle.finishScrub(false, 1000).running)
+    }
+
     @Test fun endClampsAndPlayRestarts() {
         val finished = CueTimeline(durationMs = 10_000).resume(1000)
         assertEquals(10_000L, finished.positionAt(99_000))

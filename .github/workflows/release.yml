@@ -137,7 +137,7 @@ jobs:
           script: |
             ./gradlew connectedDebugAndroidTest
             mkdir -p ui-screenshots
-            adb pull /sdcard/Android/data/com.lyricsplus.lyrics/files/screenshots ui-screenshots
+            adb pull /sdcard/Pictures/lyrics-ui ui-screenshots
       - name: Upload UI screenshots and test results
         if: always()
         uses: actions/upload-artifact@v4
