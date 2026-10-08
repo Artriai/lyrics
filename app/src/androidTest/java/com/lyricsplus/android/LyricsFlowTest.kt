@@ -83,6 +83,23 @@ class LyricsFlowTest {
         Thread.sleep(700) // Allow WebView painting and the existing fade/scroll animations to settle.
         val screenshot = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
         assertNotNull(screenshot)
+        if (name == "03-lyrics") {
+            // Check the actual WebView pixels, not just the Compose title/control layer.
+            var brightPixels = 0
+            var backgroundPixels = 0
+            for (y in screenshot.height / 3 until screenshot.height * 3 / 4 step 3) {
+                for (x in 0 until screenshot.width step 3) {
+                    val pixel = screenshot.getPixel(x, y)
+                    val r = android.graphics.Color.red(pixel)
+                    val g = android.graphics.Color.green(pixel)
+                    val b = android.graphics.Color.blue(pixel)
+                    if (minOf(r, g, b) > 150) brightPixels++
+                    if (maxOf(r, g, b) - minOf(r, g, b) > 8) backgroundPixels++
+                }
+            }
+            assertTrue("The main lyric text must be painted", brightPixels > 100)
+            assertTrue("The original gradient must be painted", backgroundPixels > 1000)
+        }
         // Shared images survive Gradle's automatic uninstall of the test/target APKs.
         val values = ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, "$name.png")
