@@ -26,6 +26,8 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -203,7 +205,7 @@ private fun LyricsOverlay(
                 LyricsHome(onOpenSearch, onOpenLibrary)
             } else {
                 if (state.lyrics.isEmpty()) {
-                    EmptyOverlay(state, onOpenSearch, onOpenLibrary,
+                    EmptyOverlay(state, onOpenSearch,
                         Modifier.fillMaxSize().background(AppBackground)
                             .statusBarsPadding().navigationBarsPadding().padding(28.dp))
                 }
@@ -370,104 +372,17 @@ private fun DebugOverlay(message: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun EmptyOverlay(
-    state: LyricsUiState,
-    onOpenSearch: () -> Unit,
-    onOpenLibrary: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val hasTrack = state.nowPlaying.hasTrack
-    val isLoading = state.isLoadingLyrics
-
-    Box(
-        modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        if (hasTrack && !isLoading) {
-            // Instrumental / no lyrics found state — clean centered display
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "♪",
-                    color = Color(0x66FFFFFF),
-                    fontSize = 64.sp
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = state.message,
-                    color = Color(0xB3FFFFFF),
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "${state.nowPlaying.track} - ${state.nowPlaying.artist}",
-                    color = Color(0x66FFFFFF),
-                    fontSize = 14.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Button(onClick = onOpenSearch, modifier = Modifier.padding(top = 22.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color.Black),
-                    shape = RoundedCornerShape(8.dp)) { Text("选择其他歌曲") }
-            }
-        } else if (hasTrack && isLoading) {
-            // Loading lyrics state
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "正在加载歌词…",
-                    color = Color(0xB3FFFFFF),
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "${state.nowPlaying.track} - ${state.nowPlaying.artist}",
-                    color = Color(0x66FFFFFF),
-                    fontSize = 14.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        } else {
-            // No track playing — setup/welcome state
-            Column(
-                horizontalAlignment = Alignment.Start
-            ) {
-                Text(
-                    text = state.message,
-                    color = Color.White,
-                    fontSize = 30.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    lineHeight = 36.sp
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = "左滑进入列表 · 长按歌词拖动调整进度",
-                    color = Color(0xFF8D9490),
-                    fontSize = 14.sp
-                )
-                Spacer(modifier = Modifier.height(22.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(
-                        onClick = onOpenSearch,
-                        colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color.Black),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text("搜索歌词")
-                    }
-                    Button(
-                        onClick = onOpenLibrary,
-                        colors = ButtonDefaults.buttonColors(containerColor = Panel, contentColor = Color.White),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text("歌词列表")
-                    }
-                }
-            }
+private fun EmptyOverlay(state: LyricsUiState, onOpenSearch: () -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.Start) {
+        Text(if (state.isLoadingLyrics) "正在加载歌词…" else state.message,
+            color = Color.White, fontSize = 24.sp, lineHeight = 32.sp, fontWeight = FontWeight.Bold)
+        Text(if (state.isLoadingLyrics) "正在准备提词与注音" else "试试其他录音版本或歌词来源",
+            color = Color(0x998D9490), fontSize = 14.sp, modifier = Modifier.padding(top = 12.dp))
+        if (!state.isLoadingLyrics) Button(onClick = onOpenSearch,
+            modifier = Modifier.padding(top = 22.dp), shape = RoundedCornerShape(10.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color.Black)) {
+            Text("选择其他歌曲")
         }
     }
 }
