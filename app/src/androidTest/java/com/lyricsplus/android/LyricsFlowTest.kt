@@ -48,6 +48,12 @@ class LyricsFlowTest {
                 compose.onAllNodesWithContentDescription("取消收藏 ${track.track}").fetchSemanticsNodes().isNotEmpty()
             }
             assertTrue(LyricsCacheDatabase(app).librarySongs().single().favorite)
+            compose.onNodeWithContentDescription("管理 ${track.track}").performClick()
+            compose.onNodeWithText("删除歌词").assertIsDisplayed()
+            screenshot(app, "04-song-menu")
+            compose.onNodeWithText("删除歌词").performClick()
+            compose.onNodeWithText("取消").performClick()
+            compose.onNodeWithText(track.track).assertIsDisplayed()
 
             compose.onNodeWithText("搜索并添加歌词").performClick()
             compose.onNodeWithText("搜索歌词").assertIsDisplayed()
