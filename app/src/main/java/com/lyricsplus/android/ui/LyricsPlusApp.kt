@@ -65,6 +65,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.Image
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
@@ -113,7 +115,7 @@ private fun LyricsOverlay(
             view.keepScreenOn = false
         }
     }
-        val isRightAligned = isMultiPane
+    val isRightAligned = isMultiPane
 
     LaunchedEffect(webController.isReady, state.nowPlaying) {
         webController.pushTrack(state.nowPlaying)
@@ -211,7 +213,7 @@ private fun LyricsOverlay(
                 }
                 val currentSong = state.library.firstOrNull { it.key == state.nowPlaying.libraryKey() }
                 if (isMultiPane) {
-                    Row(Modifier.fillMaxSize()) {
+                    Row(Modifier.fillMaxSize().zIndex(1f).graphicsLayer {}) {
                         Column(Modifier.weight(.45f).fillMaxHeight().statusBarsPadding().navigationBarsPadding()
                             .padding(24.dp), verticalArrangement = Arrangement.Center,
                             horizontalAlignment = Alignment.CenterHorizontally) {
@@ -225,7 +227,7 @@ private fun LyricsOverlay(
                         Spacer(Modifier.weight(.55f))
                     }
                 } else {
-                    Column(Modifier.align(Alignment.TopCenter).fillMaxWidth().statusBarsPadding()
+                    Column(Modifier.align(Alignment.TopCenter).zIndex(1f).graphicsLayer {}.fillMaxWidth().statusBarsPadding()
                         .padding(horizontal = 24.dp, vertical = 18.dp)
                         .onGloballyPositioned { headerHeightPx = it.size.height }) {
                         TrackTitle(state, false)
@@ -242,8 +244,8 @@ private fun LyricsOverlay(
                     .navigationBarsPadding().padding(10.dp))
             }
             if (isExpanded) {
-                Box(Modifier.fillMaxSize().noRippleClickable { isExpanded = false })
-                Column(Modifier.align(Alignment.BottomEnd).navigationBarsPadding()
+                Box(Modifier.fillMaxSize().zIndex(2f).noRippleClickable { isExpanded = false })
+                Column(Modifier.align(Alignment.BottomEnd).zIndex(2f).graphicsLayer {}.navigationBarsPadding()
                     .padding(end = 24.dp, bottom = 80.dp)
                     .heightIn(max = (configuration.screenHeightDp - 120).coerceAtLeast(160).dp)
                     .background(Color(0xEE161A18), RoundedCornerShape(18.dp))
@@ -271,7 +273,7 @@ private fun LyricsOverlay(
                     }
                 }
             }
-            Box(Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(24.dp)
+            Box(Modifier.align(Alignment.BottomEnd).zIndex(3f).graphicsLayer {}.navigationBarsPadding().padding(24.dp)
                 .size(44.dp).background(if (isExpanded) Accent else Color(0x55323634), CircleShape)
                 .semantics { contentDescription = if (isExpanded) "关闭设置" else "设置" }
                 .noRippleClickable { isExpanded = !isExpanded }, contentAlignment = Alignment.Center) {

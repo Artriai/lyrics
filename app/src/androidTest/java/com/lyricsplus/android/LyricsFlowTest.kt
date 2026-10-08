@@ -168,6 +168,20 @@ class LyricsFlowTest {
             assertTrue("The main lyric text must be painted", brightPixels > 100)
             assertTrue("The original gradient must be painted", backgroundPixels > 1000)
         }
+        if (name == "03-lyrics" || name == "06-full-lyrics") {
+            val bounds = compose.onNodeWithContentDescription("取消收藏当前歌曲").fetchSemanticsNode().boundsInRoot
+            var green = 0
+            for (y in bounds.top.toInt().coerceAtLeast(0) until bounds.bottom.toInt().coerceAtMost(screenshot.height)) {
+                for (x in bounds.left.toInt().coerceAtLeast(0) until bounds.right.toInt().coerceAtMost(screenshot.width)) {
+                    val pixel = screenshot.getPixel(x, y)
+                    val r = android.graphics.Color.red(pixel)
+                    val g = android.graphics.Color.green(pixel)
+                    val b = android.graphics.Color.blue(pixel)
+                    if (g > 130 && g > r * 1.4 && g > b * 1.1) green++
+                }
+            }
+            assertTrue("Permanent native controls must be painted above the WebView in both modes", green > 20)
+        }
         // Shared images survive Gradle's automatic uninstall of the test/target APKs.
         val values = ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, "$name.png")
