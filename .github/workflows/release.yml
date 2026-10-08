@@ -1,17 +1,19 @@
-name: Build and Release Android App
+name: Build and Release Preview APK
 
 on:
   push:
-    tags:
-      - 'v*' # 当推送以 v 开头的标签（例如 v1.0.0）时触发
     branches:
-      - main
-    paths:
-      - 'app/build.gradle.kts'
-  workflow_dispatch: # 允许在 GitHub Actions 页面手动触发构建
+      - preview
+  workflow_dispatch:
+
+concurrency:
+  group: preview-release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
+    if: github.ref == 'refs/heads/preview'
+    timeout-minutes: 30
     name: Build & Sign Release APK
     runs-on: ubuntu-latest
 
@@ -50,42 +52,23 @@ jobs:
             exit 1
           fi
 
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            RELEASE_TAG="${GITHUB_REF_NAME}"
-          else
-            RELEASE_TAG="v${VERSION_NAME}"
-          fi
+          RELEASE_TAG="preview-v${VERSION_NAME}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
 
           echo "version_name=${VERSION_NAME}" >> "${GITHUB_OUTPUT}"
           echo "tag=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
 
-      # 步骤 1：使用官方构建脚本编译 release 版本
-      # 该脚本会注入公开统计端点，保证本地官方构建与 GitHub Actions 构建一致。
-      # 注意：当前项目中 app/build.gradle.kts 的 release 配置使用的是 debug 签名配置：
-      # signingConfig = signingConfigs.getByName("debug")
-      # 这意味着它编译出来的 release APK 会自带 debug 签名，可直接安装测试。
       - name: Build with Gradle
         env:
           LYRICS_PLUS_STATS_ENDPOINT: ${{ vars.LYRICS_PLUS_STATS_ENDPOINT }}
-        run: bash scripts/assemble-official-release.sh
+        run: bash scripts/assemble-official-release.sh testDebugUnitTest
 
-      # 步骤 2（可选/推荐）：如果后续在 GitHub Secrets 配置了正式的签名密钥，可以使用以下步骤进行二次正式签名
-      # 为了防止没有密钥时工作流报错，这里默认不启用。如果您配置了 Secrets，可以取消注释以下步骤，并修改 Gradle 编译为 assembleUnsignedRelease
-      # - name: Sign Android Release APK
-      #   uses: r0adkll/sign-android-release@v1
-      #   id: sign_app
-      #   with:
-      #     releaseDirectory: app/build/outputs/apk/release
-      #     signingKeyBase64: ${{ secrets.SIGNING_KEY }}
-      #     alias: ${{ secrets.ALIAS }}
-      #     keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
-      #     keyPassword: ${{ secrets.KEY_PASSWORD }}
+      - name: Name Preview APK
+        run: cp app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/lyrics-plus-preview.apk
 
-      # 步骤 3：计算编译出的 APK 文件的 SHA-256 哈希值
       - name: Calculate SHA-256 Hash
         id: calc_sha
         run: |
-          SHA256=$(sha256sum app/build/outputs/apk/release/app-release.apk | awk '{ print $1 }')
+          SHA256=$(sha256sum app/build/outputs/apk/release/lyrics-plus-preview.apk | awk '{ print $1 }')
           echo "sha256=$SHA256" >> $GITHUB_OUTPUT
 
       # 步骤 4：将打包好的 APK 上传并发布到 GitHub Release，同时把 Hash 写入正文
@@ -93,21 +76,26 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            app/build/outputs/apk/release/app-release.apk
-          name: Release ${{ steps.version.outputs.tag }}
+            app/build/outputs/apk/release/lyrics-plus-preview.apk
+          name: Preview ${{ steps.version.outputs.tag }}
           tag_name: ${{ steps.version.outputs.tag }}
           target_commitish: ${{ github.sha }}
           body: |
-            ## 📦 Release ${{ steps.version.outputs.tag }}
+            ## 📦 Preview ${{ steps.version.outputs.tag }}
             
+            Branch: `preview`
+            Commit: `${{ github.sha }}`
+            This is a preview build. It uses the same application ID and signing key as the stable app.
+
             ### 🔒 文件校验和 (SHA-256 Checksums)
-            * **app-release.apk**: `${{ steps.calc_sha.outputs.sha256 }}`
+            * **lyrics-plus-preview.apk**: `${{ steps.calc_sha.outputs.sha256 }}`
             
             > [!TIP]
             > **安全提示：** 您可以在本地运行命令来验证下载的 APK 文件的完整性：
-            > * **Windows (PowerShell):** `Get-FileHash app-release.apk -Algorithm SHA256`
-            > * **Linux / macOS:** `sha256sum app-release.apk`
+            > * **Windows (PowerShell):** `Get-FileHash lyrics-plus-preview.apk -Algorithm SHA256`
+            > * **Linux / macOS:** `sha256sum lyrics-plus-preview.apk`
           draft: false
-          prerelease: false
+          prerelease: true
+          make_latest: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
