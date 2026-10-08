@@ -5,6 +5,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -52,7 +53,7 @@ fun LyricsLibraryPage(state: LyricsUiState, viewModel: MainViewModel, modifier: 
     BackHandler { keyboard?.hide(); viewModel.backFromLibrary() }
 
     MaterialTheme(colorScheme = darkColorScheme(
-        primary = LibraryAccent, surface = LibraryPanel, background = LibraryBackground
+        primary = LibraryAccent, surface = LibraryPanel, surfaceContainer = LibraryPanel, background = LibraryBackground
     )) {
     Column(
         modifier.background(LibraryBackground)
@@ -61,7 +62,7 @@ fun LyricsLibraryPage(state: LyricsUiState, viewModel: MainViewModel, modifier: 
                 detectHorizontalDragGestures(
                     onDragStart = { horizontal = 0f },
                     onHorizontalDrag = { _, amount -> horizontal += amount },
-                    onDragEnd = { if (horizontal > 72.dp.toPx()) { keyboard?.hide(); viewModel.backFromLibrary() } }
+                    onDragEnd = { if ((!searching && horizontal > 72.dp.toPx()) || (searching && horizontal < -72.dp.toPx())) { keyboard?.hide(); viewModel.backFromLibrary() } }
                 )
             }
             .statusBarsPadding().navigationBarsPadding().imePadding()
@@ -96,7 +97,7 @@ fun LyricsLibraryPage(state: LyricsUiState, viewModel: MainViewModel, modifier: 
                     }
                 }
             )
-            Text("选择歌曲后自动保存到列表，离线也能提词", color = LibraryMuted,
+            Text("标签为匹配来源，加载时自动选择合适的歌词", color = LibraryMuted,
                 fontSize = 12.sp, modifier = Modifier.padding(top = 12.dp, bottom = 20.dp))
             AnimatedVisibility(state.isSearching, enter = fadeIn(), exit = fadeOut()) {
                 Row(Modifier.padding(vertical = 16.dp), verticalAlignment = Alignment.CenterVertically,
@@ -114,9 +115,10 @@ fun LyricsLibraryPage(state: LyricsUiState, viewModel: MainViewModel, modifier: 
             }
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp),
                 contentPadding = PaddingValues(bottom = 24.dp)) {
-                items(state.searchResults, key = { it.libraryKey() }) { track ->
+                items(state.searchResults, key = { it.track.libraryKey() }) { match ->
+                    val track = match.track
                     val saved = state.library.firstOrNull { it.key == track.libraryKey() }
-                    SongRow(track = track, selected = state.nowPlaying.libraryKey() == track.libraryKey(),
+                    SongRow(track = track, sources = match.sources, selected = state.nowPlaying.libraryKey() == track.libraryKey(),
                         onSelect = { keyboard?.hide(); viewModel.selectSong(track) },
                         trailing = {
                             Text(if (saved != null) "已保存" else "+", color = LibraryAccent,
@@ -126,14 +128,6 @@ fun LyricsLibraryPage(state: LyricsUiState, viewModel: MainViewModel, modifier: 
                 }
             }
         } else {
-            Surface(onClick = viewModel::openSearch, color = LibraryPanel,
-                border = BorderStroke(1.dp, LibraryOutline), shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth()) {
-                Row(Modifier.padding(18.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("搜索并添加歌词", color = LibraryMuted, fontSize = 16.sp)
-                    Text("＋", color = LibraryAccent, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                }
-            }
             Row(Modifier.padding(top = 18.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 LibraryFilter("全部", !favoritesOnly) { favoritesOnly = false }
                 LibraryFilter("收藏", favoritesOnly) { favoritesOnly = true }
@@ -147,9 +141,9 @@ fun LyricsLibraryPage(state: LyricsUiState, viewModel: MainViewModel, modifier: 
                 (filter.isBlank() || "${it.track.track} ${it.track.artist}".contains(filter, ignoreCase = true)) }
             if (songs.isEmpty()) {
                 Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.Center) {
-                    Text(when { state.library.isEmpty() -> "你的下一首歌\n从这里开始"; favoritesOnly -> "还没有收藏的歌词"; else -> "没有匹配的歌曲" },
+                    Text(when { state.library.isEmpty() -> "还没有保存的歌词"; favoritesOnly -> "还没有收藏的歌词"; else -> "没有匹配的歌曲" },
                         color = Color.White, fontSize = 28.sp, lineHeight = 38.sp, fontWeight = FontWeight.ExtraBold)
-                    Text(if (state.library.isEmpty()) "搜索歌曲，保存后就能随时提词" else "试试其他筛选条件",
+                    Text(if (state.library.isEmpty()) "搜索并选歌后，歌词会自动保存在这里" else "试试其他筛选条件",
                         color = LibraryMuted, fontSize = 14.sp, modifier = Modifier.padding(top = 12.dp))
                     if (state.library.isEmpty()) Button(onClick = viewModel::openSearch,
                         modifier = Modifier.padding(top = 24.dp), shape = RoundedCornerShape(8.dp),
@@ -213,7 +207,7 @@ private fun LibraryFilter(label: String, selected: Boolean, onClick: () -> Unit)
 }
 
 @Composable
-private fun SongRow(track: NowPlaying, selected: Boolean, onSelect: () -> Unit, trailing: @Composable RowScope.() -> Unit) {
+private fun SongRow(track: NowPlaying, selected: Boolean, onSelect: () -> Unit, sources: List<String> = emptyList(), trailing: @Composable RowScope.() -> Unit) {
     Surface(color = LibraryPanel, shape = RoundedCornerShape(18.dp),
         border = BorderStroke(1.dp, if (selected) LibraryAccent.copy(alpha = .6f) else LibraryOutline),
         modifier = Modifier.fillMaxWidth()) {
@@ -228,6 +222,16 @@ private fun SongRow(track: NowPlaying, selected: Boolean, onSelect: () -> Unit, 
                     Text(listOf(track.album, duration).filter { it.isNotBlank() }.joinToString(" · "),
                         color = LibraryMuted.copy(alpha = .7f), fontSize = 12.sp, maxLines = 1,
                         overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+                }
+                if (sources.isNotEmpty()) {
+                    Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        sources.forEach { source ->
+                            Text(source, color = LibraryAccent.copy(alpha = .9f), fontSize = 10.sp,
+                                modifier = Modifier.background(LibraryAccent.copy(alpha = .08f), RoundedCornerShape(5.dp))
+                                    .border(1.dp, LibraryAccent.copy(alpha = .2f), RoundedCornerShape(5.dp))
+                                    .padding(horizontal = 6.dp, vertical = 3.dp))
+                        }
+                    }
                 }
             }
             trailing()

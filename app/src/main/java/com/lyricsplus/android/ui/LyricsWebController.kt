@@ -36,6 +36,7 @@ class LyricsWebController(context: Context) {
         private set
 
     var onOpenLibrary: () -> Unit = {}
+    var onOpenSearch: () -> Unit = {}
     var onBeginScrub: () -> Unit = {}
     var onSeekCue: (Long) -> Unit = {}
     var onEndScrub: () -> Unit = {}
@@ -48,7 +49,7 @@ class LyricsWebController(context: Context) {
         settings.domStorageEnabled = false
         settings.allowFileAccess = true
         settings.allowContentAccess = false
-        addJavascriptInterface(LyricsWebBridge(::setDebug, ::setFullMode, { onOpenLibrary() }, { onBeginScrub() }, { onSeekCue(it) }, { onEndScrub() }), "AndroidLyrics")
+        addJavascriptInterface(LyricsWebBridge(::setDebug, ::setFullMode, { onOpenLibrary() }, { onOpenSearch() }, { onBeginScrub() }, { onSeekCue(it) }, { onEndScrub() }), "AndroidLyrics")
         overScrollMode = WebView.OVER_SCROLL_NEVER
         isVerticalScrollBarEnabled = false
         isHorizontalScrollBarEnabled = false
@@ -89,6 +90,10 @@ class LyricsWebController(context: Context) {
 
         logDebug("load assets html")
         loadUrl("file:///android_asset/lyrics-web/index.html")
+    }
+
+    fun toggleLyricsMode() {
+        if (isReady) webView.evaluateJavascript("window.LyricsPlus.toggleMode()", null)
     }
 
     fun pushTrack(track: NowPlaying) {
@@ -180,6 +185,7 @@ private class LyricsWebBridge(
     private val onDebug: (String) -> Unit,
     private val onFullLyricsMode: (Boolean) -> Unit,
     private val onOpenLibrary: () -> Unit,
+    private val onOpenSearch: () -> Unit,
     private val onBeginScrub: () -> Unit,
     private val onSeekCue: (Long) -> Unit,
     private val onEndScrub: () -> Unit
@@ -188,6 +194,9 @@ private class LyricsWebBridge(
 
     @JavascriptInterface
     fun openLibrary() { mainHandler.post { onOpenLibrary() } }
+
+    @JavascriptInterface
+    fun openSearch() { mainHandler.post { onOpenSearch() } }
 
     @JavascriptInterface
     fun beginScrub() { mainHandler.post { onBeginScrub() } }
