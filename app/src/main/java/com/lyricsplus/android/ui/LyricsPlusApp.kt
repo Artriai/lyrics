@@ -261,12 +261,17 @@ private fun LyricsOverlay(
                         MenuActionRow("重新取色", "◈") { viewModel.rotatePaletteColors() }
                     }
                     val readingLabel = when (state.readingMode) { 0 -> "无注音"; 1 -> "罗马音"; else -> "振假名" }
-                    MenuActionRow("注音 · $readingLabel", "abc", state.readingMode > 0) { viewModel.cycleReadingMode() }
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    MenuActionRow("注音 · $readingLabel", "あ") { viewModel.cycleReadingMode() }
+                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("↕", color = Color(0xB3FFFFFF), fontSize = 18.sp,
+                            modifier = Modifier.width(24.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        Spacer(Modifier.width(12.dp))
                         Text("字号", color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { viewModel.adjustInAppFontScale(-.1f) }) { Text("－", color = Color.White) }
+                        TextButton(onClick = { viewModel.adjustInAppFontScale(-.1f) }, modifier = Modifier.size(36.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) { Text("－", color = Color.White) }
                         Text("${(state.inAppFontScale * 100).toInt()}%", color = Color(0xB3FFFFFF), fontSize = 12.sp)
-                        TextButton(onClick = { viewModel.adjustInAppFontScale(.1f) }) { Text("＋", color = Color.White) }
+                        TextButton(onClick = { viewModel.adjustInAppFontScale(.1f) }, modifier = Modifier.size(36.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) { Text("＋", color = Color.White) }
                     }
                     MenuActionRow("关于项目", "ⓘ") { isExpanded = false; showAbout = true }
                 }
@@ -393,7 +398,6 @@ private fun EmptyOverlay(state: LyricsUiState, onOpenSearch: () -> Unit, modifie
 private fun MenuActionRow(
     label: String,
     emoji: String,
-    active: Boolean = true,
     onClick: () -> Unit
 ) {
     Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(onClick = onClick),
