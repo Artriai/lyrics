@@ -107,8 +107,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setSearchPopular(popular: Boolean) {
         prefs.edit().putBoolean("search_popular", popular).apply()
-        _uiState.update { it.copy(searchPopular = popular,
-            searchResults = sortSongSearchMatches(searchMatches, searchedQuery, popular).take(90)) }
+        val results = sortSongSearchMatches(searchMatches, searchedQuery, popular).take(90)
+        _uiState.update { it.copy(searchPopular = popular, searchResults = results,
+            searchMessage = if (searchedQuery.isNotBlank() && !it.isSearching) {
+                if (results.isEmpty()) "没有找到歌曲，试试歌名加歌手" else ""
+            } else it.searchMessage) }
         if (searchMatches.isEmpty() && !_uiState.value.isSearching && _uiState.value.searchQuery.isNotBlank()) searchSongs()
     }
 
@@ -123,8 +126,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             searchMatches = result.getOrDefault(emptyList())
             searchedQuery = query
             _uiState.update { state -> result.fold(
-                onSuccess = { state.copy(isSearching = false, searchResults = sortSongSearchMatches(it, query, state.searchPopular).take(90),
-                    searchMessage = if (it.isEmpty()) "没有找到歌曲，试试歌名加歌手" else "") },
+                onSuccess = {
+                    val results = sortSongSearchMatches(it, query, state.searchPopular).take(90)
+                    state.copy(isSearching = false, searchResults = results,
+                        searchMessage = if (results.isEmpty()) "没有找到歌曲，试试歌名加歌手" else "")
+                },
                 onFailure = { state.copy(isSearching = false, searchMessage = "搜索失败，请检查网络后重试") }
             ) }
         }
