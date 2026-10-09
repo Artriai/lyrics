@@ -3,6 +3,7 @@ package com.lyricsplus.android
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.SystemBarStyle
 import androidx.activity.viewModels
 import androidx.compose.ui.platform.ComposeView
 import com.lyricsplus.android.analytics.AnonymousStats
@@ -17,7 +18,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         AnonymousStats.trackAppOpen(this)
         window.attributes = window.attributes.apply { preferredRefreshRate = 120f }
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+        )
         webController = LyricsWebController(this)
         webController.onOpenLibrary = viewModel::openLibrary
         webController.onBeginScrub = viewModel::beginScrub

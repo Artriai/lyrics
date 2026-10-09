@@ -72,7 +72,7 @@
     for (var i = 0; i < seed.length; i += 1) {
       hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
     }
-    return "hsl(" + (hash % 360) + " " + sat + "% " + light + "%)";
+    return "hsl(" + (hash % 360) + ", " + sat + "%, " + light + "%)";
   }
 
   function escapeHtml(value) {

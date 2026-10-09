@@ -44,6 +44,10 @@ body {
   z-index: -1;
   transition: background-color 1.2s ease-in-out, opacity 1.2s ease-in-out;
   inset: -100px;
+  top: -100px;
+  right: -100px;
+  bottom: -100px;
+  left: -100px;
   background:
     radial-gradient(circle at 20% 30%, var(--bg-c) 0%, transparent 60%),
     radial-gradient(circle at 80% 20%, var(--bg-a) 0%, transparent 60%),
