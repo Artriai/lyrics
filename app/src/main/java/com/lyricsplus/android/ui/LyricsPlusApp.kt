@@ -186,15 +186,18 @@ private fun LyricsOverlay(
     }
 
     var isExpanded by remember { mutableStateOf(false) }
+    var showAbout by remember { mutableStateOf(false) }
     var headerHeightPx by remember { mutableStateOf(0) }
-    LaunchedEffect(webController.isReady, isMultiPane, headerHeightPx) {
-        webController.pushHeaderHeight(if (isMultiPane) 0 else headerHeightPx)
+    LaunchedEffect(webController.isReady, isMultiPane, headerHeightPx, webController.isFullLyricsMode) {
+        webController.pushHeaderHeight(if (isMultiPane || webController.isFullLyricsMode) 0 else headerHeightPx)
     }
+    BackHandler(enabled = state.libraryPage == 0 && webController.isFullLyricsMode && !isExpanded && !showAbout) { webController.toggleLyricsMode() }
     BackHandler(enabled = isExpanded) { isExpanded = false }
+    BackHandler(enabled = showAbout) { showAbout = false }
 
     Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize().then(
-            if (state.libraryPage != 0) Modifier.clearAndSetSemantics { } else Modifier
+            if (state.libraryPage != 0 || showAbout) Modifier.clearAndSetSemantics { } else Modifier
         )) {
             AndroidView(factory = {
                 webController.webView.apply {
@@ -212,7 +215,7 @@ private fun LyricsOverlay(
                             .statusBarsPadding().navigationBarsPadding().padding(28.dp))
                 }
                 val currentSong = state.library.firstOrNull { it.key == state.nowPlaying.libraryKey() }
-                if (isMultiPane) {
+                if (isMultiPane && !webController.isFullLyricsMode) {
                     Row(Modifier.fillMaxSize().zIndex(1f).graphicsLayer {}) {
                         Column(Modifier.weight(.45f).fillMaxHeight().statusBarsPadding().navigationBarsPadding()
                             .padding(24.dp), verticalArrangement = Arrangement.Center,
@@ -226,13 +229,13 @@ private fun LyricsOverlay(
                         }
                         Spacer(Modifier.weight(.55f))
                     }
-                } else {
+                } else if (!webController.isFullLyricsMode) {
                     Column(Modifier.align(Alignment.TopCenter).zIndex(1f).graphicsLayer {}.fillMaxWidth().statusBarsPadding()
                         .padding(horizontal = 24.dp, vertical = 18.dp)
                         .onGloballyPositioned { headerHeightPx = it.size.height }) {
                         TrackTitle(state, false)
                         Row(Modifier.fillMaxWidth().padding(top = 8.dp),
-                            horizontalArrangement = Arrangement.End,
+                            horizontalArrangement = Arrangement.Start,
                             verticalAlignment = Alignment.CenterVertically) {
                             CueControls(state, viewModel, currentSong)
                         }
@@ -250,27 +253,22 @@ private fun LyricsOverlay(
                     .heightIn(max = (configuration.screenHeightDp - 120).coerceAtLeast(160).dp)
                     .background(Color(0xEE161A18), RoundedCornerShape(18.dp))
                     .border(1.dp, Outline, RoundedCornerShape(18.dp))
-                    .padding(16.dp).verticalScroll(rememberScrollState()),
-                    horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    .width(256.dp).padding(16.dp).verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.Start,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (state.nowPlaying.hasTrack && state.lyrics.isNotEmpty()) {
-                        MenuActionRow("切换歌词源 · ${state.activeLyricsSource}", "🎵") { viewModel.switchLyricsSource() }
-                        MenuActionRow(if (webController.isFullLyricsMode) "集中提词" else "全部歌词", "≡") { webController.toggleLyricsMode() }
-                        MenuActionRow("重新取色", "🎨") { viewModel.rotatePaletteColors() }
+                        MenuActionRow("切换歌词源 · ${state.activeLyricsSource}", "♫") { viewModel.switchLyricsSource() }
+                        MenuActionRow("重新取色", "◈") { viewModel.rotatePaletteColors() }
                     }
                     val readingLabel = when (state.readingMode) { 0 -> "无注音"; 1 -> "罗马音"; else -> "振假名" }
                     MenuActionRow("注音 · $readingLabel", "abc", state.readingMode > 0) { viewModel.cycleReadingMode() }
-                    MenuActionRow(if (state.keepScreenOn) "屏幕常亮 · 开启" else "屏幕常亮 · 关闭", "💡", state.keepScreenOn) { viewModel.toggleKeepScreenOn() }
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("字号", color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
                         TextButton(onClick = { viewModel.adjustInAppFontScale(-.1f) }) { Text("－", color = Color.White) }
-                        Text("字号 ${(state.inAppFontScale * 100).toInt()}%", color = Color.White, fontSize = 12.sp)
+                        Text("${(state.inAppFontScale * 100).toInt()}%", color = Color(0xB3FFFFFF), fontSize = 12.sp)
                         TextButton(onClick = { viewModel.adjustInAppFontScale(.1f) }) { Text("＋", color = Color.White) }
                     }
-                    MenuActionRow("检查更新", "↻") { viewModel.checkForUpdates() }
-                    MenuActionRow(if (state.autoCheckUpdatesEnabled) "自动更新检查 · 开启" else "自动更新检查 · 关闭", "↻", state.autoCheckUpdatesEnabled) { viewModel.toggleAutoCheckUpdates() }
-                    if (state.anonymousStatsAvailable) {
-                        MenuActionRow(if (state.anonymousStatsEnabled) "匿名统计 · 开启" else "匿名统计 · 关闭", "◌", state.anonymousStatsEnabled) { viewModel.toggleAnonymousStats() }
-                    }
+                    MenuActionRow("关于项目", "ⓘ") { isExpanded = false; showAbout = true }
                 }
             }
             Box(Modifier.align(Alignment.BottomEnd).zIndex(3f).graphicsLayer {}.navigationBarsPadding().padding(24.dp)
@@ -282,6 +280,7 @@ private fun LyricsOverlay(
             }
         }
         if (state.libraryPage != 0) LyricsLibraryPage(state, viewModel, Modifier.fillMaxSize().zIndex(4f).graphicsLayer {})
+        if (showAbout) LyricsAboutPage(viewModel, onBack = { showAbout = false }, modifier = Modifier.fillMaxSize().zIndex(5f).graphicsLayer {})
     }
 }
 
@@ -297,14 +296,15 @@ private fun TrackTitle(state: LyricsUiState, centered: Boolean) {
 
 @Composable
 private fun CueControls(state: LyricsUiState, viewModel: MainViewModel, song: com.lyricsplus.android.data.LibrarySong?) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        TextButton(onClick = { if (song != null) viewModel.toggleFavorite(song) }, enabled = song != null,
-            modifier = Modifier.semantics { contentDescription = if (song?.favorite == true) "取消收藏当前歌曲" else "收藏当前歌曲" }) {
-            Text(if (song?.favorite == true) "★" else "☆", fontSize = 25.sp,
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(Modifier.size(48.dp).background(Color(0x26323634), CircleShape)
+            .semantics { contentDescription = if (song?.favorite == true) "取消收藏当前歌曲" else "收藏当前歌曲" }
+            .noRippleClickable { if (song != null) viewModel.toggleFavorite(song) }, contentAlignment = Alignment.Center) {
+            Text(if (song?.favorite == true) "★" else "☆", fontSize = 24.sp,
                 color = if (song?.favorite == true) Accent else Color.White.copy(alpha = if (song == null) .3f else 1f))
         }
-        PlayPauseButton(state.playback.isPlaying, viewModel::togglePlayback)
-        SkipNextButton(viewModel::skipToNext)
+        PlayPauseButton(state.playback.isPlaying, viewModel::togglePlayback, Modifier.background(Color(0x26323634), CircleShape))
+        SkipNextButton(viewModel::skipToNext, Modifier.background(Color(0x26323634), CircleShape))
     }
 }
 
@@ -327,7 +327,7 @@ private fun LyricsHome(onSearch: () -> Unit, onLibrary: () -> Unit) {
         }
         Spacer(Modifier.weight(.75f))
         Text("右滑搜索   ·   左滑列表", color = Color(0xFF8D9490), fontSize = 13.sp)
-        Text("保存后离线提词 · 长按拖动校准进度", color = Color(0x668D9490), fontSize = 12.sp,
+        Text("离线歌词 · 上下滑动调整进度", color = Color(0x668D9490), fontSize = 12.sp,
             modifier = Modifier.padding(top = 8.dp, bottom = 64.dp))
     }
 }
@@ -396,39 +396,12 @@ private fun MenuActionRow(
     active: Boolean = true,
     onClick: () -> Unit
 ) {
-    Row(
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.clickable(
-            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-            indication = null
-        ) { onClick() }
-    ) {
-        Box(
-            modifier = Modifier
-                .background(Color(0xD9101211), RoundedCornerShape(6.dp))
-                .padding(horizontal = 10.dp, vertical = 6.dp)
-        ) {
-            Text(
-                text = label,
-                color = Color.White,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
-        Box(
-            modifier = Modifier
-                .size(42.dp)
-                .background(if (active) Color(0xD9323634) else Color(0x66323634), CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = emoji,
-                color = Color.White,
-                fontSize = 18.sp
-            )
-        }
+        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(emoji, color = Color(0xB3FFFFFF), fontSize = 18.sp,
+            modifier = Modifier.width(24.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        Text(label, color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
     }
 }
 
@@ -440,7 +413,7 @@ private fun PlayPauseButton(
 ) {
     Box(
         modifier = modifier
-            .size(44.dp)
+            .size(48.dp)
             .semantics { contentDescription = if (isPlaying) "暂停提词" else "开始提词" }
             .clickable(
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
@@ -489,7 +462,7 @@ private fun SkipNextButton(
 ) {
     Box(
         modifier = modifier
-            .size(44.dp)
+            .size(48.dp)
             .clickable(
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                 indication = null

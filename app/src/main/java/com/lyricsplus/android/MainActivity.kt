@@ -16,7 +16,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        AnonymousStats.trackAppOpen(this)
+        // The simplified standalone app has no analytics controls or analytics collection.
+        AnonymousStats.setEnabled(this, false)
         window.attributes = window.attributes.apply { preferredRefreshRate = 120f }
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),

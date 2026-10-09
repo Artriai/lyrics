@@ -6,6 +6,8 @@ import com.lyricsplus.android.data.NowPlaying
 import com.lyricsplus.android.data.LyricsSearchResult
 import com.lyricsplus.android.data.SongSearchMatch
 import com.lyricsplus.android.data.mergeSongSearchMatches
+import com.lyricsplus.android.data.songSearchQueries
+import com.lyricsplus.android.data.songSearchScore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
@@ -211,18 +213,16 @@ class LyricsProvider(
     }
 
     suspend fun searchSongs(query: String): Result<List<SongSearchMatch>> = withContext(Dispatchers.IO) {
-        val searches = listOf(
-            async { runCatching { neteaseClient.searchSongs(query).map { SongSearchMatch(it, listOf("网易云音乐")) } } },
-            async { runCatching { qqMusicClient.searchSongs(query).map { SongSearchMatch(it, listOf("QQ音乐")) } } },
-            async { runCatching { lrclibClient.searchSongs(query).map { SongSearchMatch(it, listOf("LRCLIB")) } } }
-        ).map { it.await() }
+        val searches = songSearchQueries(query).flatMap { phrase -> listOf(
+            async { runCatching { neteaseClient.searchSongs(phrase).map { SongSearchMatch(it, listOf("网易云音乐")) } } },
+            async { runCatching { qqMusicClient.searchSongs(phrase).map { SongSearchMatch(it, listOf("QQ音乐")) } } },
+            async { runCatching { lrclibClient.searchSongs(phrase).map { SongSearchMatch(it, listOf("LRCLIB")) } } }
+        ) }.map { it.await() }
         if (searches.all { it.isFailure }) {
             Result.failure(searches.first().exceptionOrNull() ?: java.io.IOException("搜索失败"))
         } else {
-            // Each source already ranks matches; preserve rank and prefer exact title matches.
-            val normalizedQuery = query.lowercase().filterNot { it.isWhitespace() }
             Result.success(mergeSongSearchMatches(searches.flatMap { it.getOrDefault(emptyList()) })
-                .sortedByDescending { if (it.track.track.lowercase().filterNot { c -> c.isWhitespace() } == normalizedQuery) 1 else 0 }
+                .sortedByDescending { songSearchScore(it.track, query) }
                 .take(60))
         }
     }

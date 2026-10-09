@@ -547,10 +547,10 @@ rt {
 }
 .stage:not(.full-lyrics-mode) .line.active { filter: none; }
 .stage:not(.full-lyrics-mode) .line { pointer-events: auto; }
-.stage.full-lyrics-mode:not(.right-aligned) .lyrics-viewport {
-  padding-top: calc(var(--header-bottom, 120px) + var(--safe-top, 28px));
-  clip-path: inset(calc(var(--header-bottom, 120px) + var(--safe-top, 28px)) 0 0 0);
+/* Full mode is only lyrics; no native header/control pane to reserve. */
+.stage.full-lyrics-mode .lyrics-viewport {
+  padding-top: var(--safe-top, 28px);
+  clip-path: inset(var(--safe-top, 28px) 0 0 0);
 }
-
-/* Keep the permanent landscape controls in their existing left pane. */
-.stage.right-aligned.full-lyrics-mode .lyrics { left: 45%; width: 55%; }
+.stage.right-aligned.full-lyrics-mode .lyrics { left: 0; width: 100%; }
+.stage:not(.full-lyrics-mode) { touch-action: none; }

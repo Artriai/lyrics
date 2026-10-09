@@ -133,7 +133,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val duration = maxOf(track.durationSeconds * 1000L, lastLine + 8000L)
                 timeline = CueTimeline(durationMs = duration).seek(restorePosition, SystemClock.elapsedRealtime())
                 _uiState.update { it.copy(lyrics = resolved.lyrics, activeLyricsSource = resolved.source,
-                    isLoadingLyrics = false, message = "点击播放开始提词；长按歌词上下拖动校准进度") }
+                    isLoadingLyrics = false, message = "点击播放开始提词；上下滑动调整进度") }
                 publishClock()
                 withContext(Dispatchers.IO) {
                     lyricsProvider.saveToCache(track, resolved.lyrics, resolved.source)

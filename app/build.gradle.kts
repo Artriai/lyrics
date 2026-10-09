@@ -45,7 +45,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 1000 + (providers.gradleProperty("lyricsBuildNumber").orNull?.toIntOrNull() ?: 0)
-        versionName = "1.0.1"
+        versionName = "1.0.2"
         buildConfigField("long", "LYRICS_BUILD_NUMBER", "${providers.gradleProperty("lyricsBuildNumber").orNull?.toLongOrNull() ?: 0L}L")
         
         resConfigs("en", "zh", "zh-rCN", "zh-rTW", "zh-rHK")
