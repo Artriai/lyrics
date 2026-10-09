@@ -78,7 +78,7 @@ class LyricsFlowTest {
             compose.onNodeWithText("周杰伦").assertIsDisplayed()
             screenshot(app, "02-search")
             back(scenario)
-            compose.onNodeWithText("使用方式").assertIsDisplayed()
+            compose.onNodeWithText("点空白处切换歌词视图").assertIsDisplayed()
             compose.onRoot().performTouchInput { swipeLeft() }
             compose.onNodeWithText(track.track).performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("开始提词").fetchSemanticsNodes().isNotEmpty() }
@@ -101,9 +101,18 @@ class LyricsFlowTest {
             compose.onNodeWithText("关于项目").performClick()
             compose.onNodeWithText("项目地址").assertIsDisplayed()
             compose.onNodeWithText("检查更新").assertIsDisplayed()
+            compose.mainClock.autoAdvance = false
             compose.onRoot().performTouchInput { click(Offset(width * .5f, height * .8f)) }
-            compose.waitUntil(1000) { compose.onAllNodesWithText("★").fetchSemanticsNodes().isNotEmpty() }
-            screenshot(app, "08-about")
+            compose.mainClock.advanceTimeBy(120)
+            compose.onAllNodesWithText("★").assertCountEquals(1)
+            compose.onAllNodesWithText("独立歌词提词板", substring = true).assertCountEquals(0)
+            compose.onAllNodesWithText("Made with love", substring = true).assertCountEquals(0)
+            compose.onRoot().performTouchInput {
+                repeat(5) { click(Offset(width * .5f, height * .8f)); advanceEventTime(70) }
+            }
+            compose.mainClock.advanceTimeBy(160)
+            screenshot(app, "08-about", settleMillis = 100)
+            compose.mainClock.autoAdvance = true
             back(scenario)
             compose.onNodeWithContentDescription("设置").assertIsDisplayed()
             val oldPosition = app.getSharedPreferences("lyrics_plus_prefs", 0).getLong("last_position", 0)
@@ -123,7 +132,9 @@ class LyricsFlowTest {
             Thread.sleep(650)
             assertEquals("0", webJs(scenario, "document.getElementById('stage').scrollTop"))
             assertEquals("true", webJs(scenario, "(() => {const row=document.querySelector('.line.active');const r=row.getBoundingClientRect();return r.top>=0 && r.bottom<=innerHeight && getComputedStyle(row).filter==='none';})()"))
-            webJs(scenario, "window.LyricsPlus.toggleMode()")
+            webJs(scenario, "document.querySelector('.line.active').click()")
+            assertEquals("false", webJs(scenario, "document.getElementById('stage').classList.contains('full-lyrics-mode')"))
+            webJs(scenario, "document.getElementById('stage').click()")
             compose.waitUntil(10_000) { webJs(scenario, "document.getElementById('stage').classList.contains('full-lyrics-mode')") == "true" }
             Thread.sleep(1100) // Ignore the compatibility click after the preceding swipe.
             webJs(scenario, "document.querySelector('.line[data-index=\"2\"]').click()")
@@ -133,6 +144,10 @@ class LyricsFlowTest {
             assertEquals("2", webJs(scenario, "document.querySelector('.line.active').dataset.index").trim('\"'))
             println("Full mode DOM: " + webJs(scenario, "JSON.stringify({scrollY:window.scrollY,innerHeight:innerHeight,clip:getComputedStyle(document.querySelector('.lyrics-viewport')).clipPath,padding:getComputedStyle(document.querySelector('.lyrics-viewport')).paddingTop,header:getComputedStyle(document.getElementById('stage')).getPropertyValue('--header-bottom')})"))
             screenshot(app, "06-full-lyrics")
+            webJs(scenario, "document.getElementById('stage').click()")
+            compose.waitUntil(10_000) { webJs(scenario, "document.getElementById('stage').classList.contains('full-lyrics-mode')") == "false" }
+            webJs(scenario, "document.getElementById('stage').click()")
+            compose.waitUntil(10_000) { webJs(scenario, "document.getElementById('stage').classList.contains('full-lyrics-mode')") == "true" }
             back(scenario)
             compose.waitUntil(10_000) { webJs(scenario, "document.getElementById('stage').classList.contains('full-lyrics-mode')") == "false" }
             compose.onNodeWithContentDescription("开始提词").assertIsDisplayed()
@@ -235,9 +250,9 @@ class LyricsFlowTest {
         return result.get()
     }
 
-    private fun screenshot(app: android.app.Application, name: String) {
+    private fun screenshot(app: android.app.Application, name: String, settleMillis: Long = 700) {
         compose.waitForIdle()
-        Thread.sleep(700) // Allow WebView painting and the existing fade/scroll animations to settle.
+        Thread.sleep(settleMillis) // Allow WebView painting and the existing fade/scroll animations to settle.
         val screenshot = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
         assertNotNull(screenshot)
         // Shared images survive Gradle's automatic uninstall of the test/target APKs.

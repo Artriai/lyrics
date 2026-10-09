@@ -6,24 +6,37 @@ import java.util.Locale
 private fun String.searchNormalized(): String = Normalizer.normalize(this, Normalizer.Form.NFKC)
     .lowercase(Locale.ROOT).filter { it.isLetterOrDigit() }
 
-/** Popularity never promotes a partial-token hit over a complete query match. */
+/** Relevance includes platform aliases/translations; popularity only breaks comparable matches. */
 fun sortSongSearchMatches(matches: List<SongSearchMatch>, query: String, popular: Boolean): List<SongSearchMatch> {
-    if (!popular) return matches.sortedByDescending { songSearchScore(it.track, query) }
     val whole = query.searchNormalized()
-    val parts = query.trim().split(Regex("[\\s·/，,]+" )).map { it.searchNormalized() }.filter { it.isNotBlank() }
-    fun tier(track: NowPlaying): Int {
-        val title = track.track.searchNormalized()
-        val artist = track.artist.searchNormalized()
-        val fields = listOf(title, artist, title + artist, artist + title)
-        if (whole.isNotBlank() && fields.any { it.contains(whole) }) return 3
-        if (parts.isNotEmpty() && parts.all { part -> fields.any { it.contains(part) } }) return 2
-        return 1
-    }
-    fun heat(match: SongSearchMatch): Double = (match.popularity ?: 0).toDouble() +
-        match.sourceRanks.filterKeys { it != "LRCLIB" }.values.sumOf { 15.0 / (it.coerceAtLeast(0) + 1) } +
-        (match.sources.size - 1).coerceAtLeast(0) * 2.0
-    return matches.sortedWith(compareByDescending<SongSearchMatch> { tier(it.track) }
-        .thenByDescending { heat(it) }.thenByDescending { songSearchScore(it.track, query) })
+    if (whole.isBlank()) return matches
+    val parts = query.searchParts()
+    data class Ranked(val match: SongSearchMatch, val score: Int, val tier: Int, val heat: Double)
+    val ranked = matches.map { match ->
+        val fields = match.searchFields()
+        val score = searchScore(fields, query)
+        val tier = when {
+            fields.any { it.contains(whole) } -> 3
+            parts.isNotEmpty() && parts.all { part -> fields.any { it.contains(part) } } -> 2
+            else -> 1
+        }
+        val heat = (match.popularity ?: 0).toDouble() +
+            match.sourceRanks.filterKeys { it != "LRCLIB" }.values.sumOf { 15.0 / (it.coerceAtLeast(0) + 1) } +
+            (match.sources.size - 1).coerceAtLeast(0) * 2.0
+        Ranked(match, score, tier, heat)
+    }.filter { it.score > 0 }
+    val order = if (popular) compareByDescending<Ranked> { it.tier }.thenByDescending { it.heat }.thenByDescending { it.score }
+        else compareByDescending<Ranked> { it.score }.thenByDescending { it.heat }
+    return ranked.sortedWith(order).map { it.match }
+}
+
+private fun String.searchParts(): List<String> = trim().split(Regex("[\\s·/，,]+"))
+    .map { it.searchNormalized() }.filter { it.isNotBlank() }
+
+private fun SongSearchMatch.searchFields(): List<String> {
+    val titles = (listOf(track.track) + aliases).map { it.searchNormalized() }.filter { it.isNotBlank() }.distinct()
+    val artists = (listOf(track.artist) + artistAliases).map { it.searchNormalized() }.filter { it.isNotBlank() }.distinct()
+    return (titles + artists + titles.flatMap { title -> artists.flatMap { artist -> listOf(title + artist, artist + title) } }).distinct()
 }
 
 /** Search the full phrase plus either side, then rank against title AND artist. */
@@ -33,13 +46,14 @@ fun songSearchQueries(query: String): List<String> {
         .filter { it.isNotBlank() }.distinct().take(3)
 }
 
-fun songSearchScore(track: NowPlaying, query: String): Int {
-    val title = track.track.searchNormalized()
-    val artist = track.artist.searchNormalized()
+fun songSearchScore(track: NowPlaying, query: String): Int = songSearchScore(SongSearchMatch(track, emptyList()), query)
+
+fun songSearchScore(match: SongSearchMatch, query: String): Int = searchScore(match.searchFields(), query)
+
+private fun searchScore(fields: List<String>, query: String): Int {
     val whole = query.searchNormalized()
-    if (whole.isBlank()) return 0
-    val parts = query.trim().split(Regex("[\\s·/，,]+" )).map { it.searchNormalized() }.filter { it.isNotBlank() }
-    val fields = listOf(title, artist, title + artist, artist + title)
+    if (whole.isBlank() || fields.isEmpty()) return 0
+    val parts = query.searchParts()
     var score = fields.maxOf { if (it == whole) 160 else if (it.contains(whole)) 110 else 0 }
     score += parts.sumOf { token ->
         fields.maxOf { field ->

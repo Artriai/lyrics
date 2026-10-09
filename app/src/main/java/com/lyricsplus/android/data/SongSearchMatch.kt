@@ -5,7 +5,9 @@ data class SongSearchMatch(
     val track: NowPlaying,
     val sources: List<String>,
     val popularity: Int? = null,
-    val sourceRanks: Map<String, Int> = emptyMap()
+    val sourceRanks: Map<String, Int> = emptyMap(),
+    val aliases: List<String> = emptyList(),
+    val artistAliases: List<String> = emptyList()
 )
 
 fun mergeSongSearchMatches(matches: List<SongSearchMatch>): List<SongSearchMatch> {
@@ -29,7 +31,7 @@ fun mergeSongSearchMatches(matches: List<SongSearchMatch>): List<SongSearchMatch
                 listOfNotNull(old.popularity, match.popularity).maxOrNull(),
                 (old.sourceRanks.keys + match.sourceRanks.keys).associateWith { source ->
                     minOf(old.sourceRanks[source] ?: Int.MAX_VALUE, match.sourceRanks[source] ?: Int.MAX_VALUE)
-                })
+                }, (old.aliases + match.aliases).distinct(), (old.artistAliases + match.artistAliases).distinct())
         }
     }
     return merged

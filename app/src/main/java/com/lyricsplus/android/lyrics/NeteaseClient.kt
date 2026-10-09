@@ -45,9 +45,18 @@ class NeteaseClient {
                 album = (song.optJSONObject("al") ?: song.optJSONObject("album"))?.optString("name").orEmpty(),
                 durationSeconds = ((song.optLong("dt", song.optLong("duration")) + 500) / 1000).toInt()),
                 listOf("网易云音乐"), popularity = if (song.has("pop") && !song.isNull("pop")) song.optDouble("pop").toInt().coerceIn(0, 100) else null,
-                sourceRanks = mapOf("网易云音乐" to rank))
+                sourceRanks = mapOf("网易云音乐" to rank),
+                aliases = song.searchAliases(),
+                artistAliases = (song.optJSONArray("ar") ?: song.optJSONArray("artists"))?.let { artists ->
+                    (0 until artists.length()).flatMap { artists.optJSONObject(it)?.searchAliases().orEmpty() }
+                }.orEmpty())
         }.filter { it.track.track.isNotBlank() }
     }
+
+    // Platforms often return the original title with the user's translated title in these fields.
+    private fun JSONObject.searchAliases(): List<String> = listOf("alia", "alias", "tns", "transNames").flatMap { key ->
+        optJSONArray(key)?.let { values -> (0 until values.length()).map { values.optString(it) } }.orEmpty()
+    }.filter { it.isNotBlank() }.distinct()
 
     private fun searchSongId(track: NowPlaying): Pair<Long, Int>? {
         val cleanTitle = cleanTitle(track.track)
