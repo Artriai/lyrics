@@ -3,6 +3,11 @@ package com.lyricsplus.android
 import android.graphics.Bitmap
 import android.content.ContentValues
 import android.provider.MediaStore
+import androidx.compose.ui.platform.ComposeView
+import androidx.lifecycle.ViewModelProvider
+import com.lyricsplus.android.data.SongSearchMatch
+import com.lyricsplus.android.data.mergeSongSearchMatches
+import com.lyricsplus.android.ui.LyricsLibraryPage
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -104,6 +109,26 @@ class LyricsFlowTest {
             assertTrue(LyricsCacheDatabase(app).librarySongs().single().favorite)
             assertEquals(3, LyricsCacheDatabase(app).getLyrics(track.libraryKey())!!.lyrics.size)
         } finally { scenario.close(); db.close() }
+    }
+
+    @Test fun searchSourceLabelsShowMultipleMatches() {
+        val app = ApplicationProvider.getApplicationContext<android.app.Application>()
+        app.getSharedPreferences("lyrics_plus_prefs", 0).edit().putBoolean("auto_check_updates", false).commit()
+        val track = NowPlaying(track = "同一首歌，多个来源", artist = "lyrics", album = "匹配来源", durationSeconds = 200)
+        val matches = mergeSongSearchMatches(listOf("网易云音乐", "QQ音乐", "LRCLIB").map { SongSearchMatch(track, listOf(it)) })
+        val scenario = ActivityScenario.launch(MainActivity::class.java)
+        try {
+            scenario.onActivity { activity ->
+                val vm = ViewModelProvider(activity)[MainViewModel::class.java]
+                val content = activity.findViewById<ViewGroup>(android.R.id.content).getChildAt(0) as ComposeView
+                content.setContent { LyricsLibraryPage(LyricsUiState(libraryPage = 2, searchQuery = "想唱的歌", searchResults = matches), vm) }
+            }
+            compose.onNodeWithText("网易云音乐").assertIsDisplayed()
+            compose.onNodeWithText("QQ音乐").assertIsDisplayed()
+            compose.onNodeWithText("LRCLIB").assertIsDisplayed()
+            compose.onNodeWithText(track.track).assertIsDisplayed()
+            screenshot(app, "07-search-sources")
+        } finally { scenario.close() }
     }
 
     private fun webJs(scenario: ActivityScenario<MainActivity>, script: String): String {
