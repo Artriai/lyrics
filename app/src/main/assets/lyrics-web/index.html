@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <link rel="stylesheet" href="style.css">
+  <title>lyrics</title>
+</head>
+<body>
+  <main id="stage" class="stage animation-paused">
+    <div class="top-blur-bar"></div>
+    <header class="trackHeader">
+      <div id="trackTitle" class="trackTitle">lyrics</div>
+      <div id="trackArtist" class="trackArtist">选择一首歌</div>
+    </header>
+    <div class="lyrics-viewport">
+      <section id="lyrics" class="lyrics" aria-live="polite"></section>
+    </div>
+    <section id="empty" class="empty" hidden>
+      <h1>lyrics</h1>
+      <p>搜索并选择歌曲，开始提词</p>
+    </section>
+  </main>
+  <div id="vrr-keepalive" style="position:fixed;width:2px;height:2px;left:0;top:0;opacity:0.01;pointer-events:none;will-change:transform,opacity;background:#fff;"></div>
+  <script src="renderer.js"></script>
+</body>
+</html>

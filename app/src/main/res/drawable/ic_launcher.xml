@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="512dp"
+    android:height="512dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <!-- Beautiful Dark Squircle Background -->
+    <path
+        android:fillColor="#FF0C0E0D"
+        android:pathData="M 112,16 H 400 A 96,96 0 0 1 496,112 V 400 A 96,96 0 0 1 400,496 H 112 A 96,96 0 0 1 16,400 V 112 A 96,96 0 0 1 112,16 Z" />
+    
+    <!-- Smooth Bezier Curved Letter L with Lime-to-Green Gradient -->
+    <path
+        android:strokeWidth="64"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 198,160 L 198,304 Q 198,352 246,352 L 314,352">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:startX="198"
+                android:startY="160"
+                android:endX="256"
+                android:endY="352"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FFD3A5FF" />
+                <item android:offset="1.0" android:color="#FF8865E8" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

@@ -1,0 +1,539 @@
+:root {
+  color-scheme: dark;
+  --active: #ffffff;
+  --translation: rgba(255, 255, 255, 0.58);
+  --inactive: rgba(255, 255, 255, 0.18);
+  --inactive-soft: rgba(255, 255, 255, 0.12);
+  --bg-a: #c72d75;
+  --bg-b: #2b1126;
+  --bg-c: #f06aa5;
+  --in-app-font-scale: 1.0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #101010;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.stage {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background-color: #101010;
+  z-index: 0;
+}
+
+.stage::before {
+  content: "";
+  position: fixed;
+  z-index: -1;
+  transition: background-color 1.2s ease-in-out, opacity 1.2s ease-in-out;
+  inset: -100px;
+  background:
+    radial-gradient(circle at 20% 30%, var(--bg-c) 0%, transparent 60%),
+    radial-gradient(circle at 80% 20%, var(--bg-a) 0%, transparent 60%),
+    radial-gradient(circle at 70% 70%, var(--bg-c) 0%, transparent 60%),
+    radial-gradient(circle at 30% 80%, var(--bg-a) 0%, transparent 60%);
+  background-color: var(--bg-b);
+  filter: blur(55px);
+  opacity: 0.65;
+}
+
+.trackHeader {
+  display: none;
+}
+
+.trackTitle {
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 20px;
+  line-height: 1.2;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trackArtist {
+  margin-top: 2px;
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 13px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+.lyrics {
+  position: absolute;
+  /* 1/4 of the space between header bottom and screen bottom */
+  top: calc(var(--header-bottom, 120px) + (100vh - var(--header-bottom, 120px)) / 4);
+  left: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  transition: transform 550ms cubic-bezier(0.22, 0.68, 0.35, 1);
+  z-index: 4;
+  will-change: transform;
+  contain: layout style;
+}
+
+.line {
+  position: relative;
+  width: calc(100vw - 48px);
+  margin-left: 24px;
+  margin-bottom: 32px;
+  text-align: left;
+  transform-origin: left center;
+  transition:
+    transform 500ms cubic-bezier(0.22, 0.68, 0.35, 1),
+    opacity 450ms cubic-bezier(0.22, 0.68, 0.35, 1);
+  will-change: transform, opacity;
+  contain: content;
+}
+
+.romaji {
+  display: block;
+  margin-bottom: 3px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: calc(17px * var(--in-app-font-scale, 1));
+  line-height: 1.1;
+  font-weight: 850;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+
+.stage:not(.right-aligned) .romaji {
+  margin-left: 3px;
+}
+
+.stage.right-aligned .romaji {
+  margin-right: 3px;
+}
+
+.text {
+  display: block;
+  color: var(--inactive);
+  font-size: calc(48px * var(--in-app-font-scale, 1));
+  line-height: 1.2;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  transition: color 400ms cubic-bezier(0.22, 0.68, 0.35, 1),
+    text-shadow 400ms cubic-bezier(0.22, 0.68, 0.35, 1);
+}
+
+.translation {
+  display: block;
+  margin-top: 8px;
+  color: rgba(255, 255, 255, 0.12);
+  font-size: calc(30px * var(--in-app-font-scale, 1));
+  line-height: 1.2;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  transition: color 400ms cubic-bezier(0.22, 0.68, 0.35, 1);
+}
+
+.line.active .text {
+  color: var(--active);
+  text-shadow: 0 10px 32px rgba(0, 0, 0, 0.16);
+}
+
+.line.active .translation {
+  color: var(--translation);
+}
+
+.line.long .text {
+  font-size: calc(38px * var(--in-app-font-scale, 1));
+}
+
+.line.long .translation {
+  font-size: calc(24px * var(--in-app-font-scale, 1));
+}
+
+.line.short .text {
+  font-size: calc(56px * var(--in-app-font-scale, 1));
+}
+
+.line.far .text,
+.line.far .translation {
+  color: var(--inactive-soft);
+}
+
+.line.near {
+  filter: blur(2px);
+}
+
+.line.far {
+  filter: blur(7px);
+}
+
+@media (min-width: 700px) {
+  .text {
+    font-size: calc(70px * var(--in-app-font-scale, 1));
+  }
+
+  .translation {
+    font-size: calc(45px * var(--in-app-font-scale, 1));
+  }
+
+  .romaji {
+    font-size: calc(26px * var(--in-app-font-scale, 1));
+  }
+}
+
+.empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 32px;
+  color: white;
+  z-index: 4;
+}
+
+.empty[hidden] {
+  display: none;
+}
+
+.empty h1 {
+  margin: 0 0 10px;
+  font-size: 34px;
+  line-height: 1;
+}
+
+.empty p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 17px;
+}
+
+/* Intro sequential dots animation */
+.intro-dots {
+  display: inline-flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.intro-dots .dot {
+  opacity: 0.15;
+  animation: dotSequentialFade 3s infinite ease-in-out;
+  display: inline-block;
+  transform-origin: center center;
+}
+
+.intro-dots .dot-1 {
+  animation-delay: 0s;
+}
+
+.intro-dots .dot-2 {
+  animation-delay: 0.7s;
+}
+
+.intro-dots .dot-3 {
+  animation-delay: 1.4s;
+}
+
+/* Stop dots animation when not the active line */
+.line:not(.active) .intro-dots .dot {
+  animation: none;
+  opacity: 0.3;
+  transform: scale(1);
+}
+
+/* Pause dots animation when the stage/playback is paused */
+.stage.paused .intro-dots .dot {
+  animation-play-state: paused;
+}
+
+@keyframes dotSequentialFade {
+
+  0%,
+  100% {
+    opacity: 0.15;
+    transform: scale(0.9);
+  }
+
+  33% {
+    opacity: 0.95;
+    transform: scale(1.25);
+  }
+}
+
+/* Full Lyrics Mode styling */
+.stage.full-lyrics-mode {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  padding-top: var(--status-bar-height, 40px);
+}
+
+.stage.full-lyrics-mode .lyrics {
+  position: relative;
+  top: 15vh;
+  padding-bottom: 50vh;
+  /* Space at bottom so last lines can be scrolled to center */
+  transform: none !important;
+  transition: none !important;
+}
+
+/* In full-lyrics-mode, ALL lines are fully visible */
+.stage.full-lyrics-mode .line {
+  opacity: 1 !important;
+  filter: none !important;
+  transform: none !important;
+  transition: none;
+}
+
+/* Lock font sizes — active line must NOT change size to prevent reflow */
+.stage.full-lyrics-mode .line .text,
+.stage.full-lyrics-mode .line.active .text {
+  font-size: calc(42px * var(--in-app-font-scale, 1)) !important;
+  color: rgba(255, 255, 255, 0.35);
+  transition: color 350ms ease, text-shadow 350ms ease;
+}
+
+.stage.full-lyrics-mode .line .translation,
+.stage.full-lyrics-mode .line.active .translation {
+  font-size: calc(26px * var(--in-app-font-scale, 1)) !important;
+  color: rgba(255, 255, 255, 0.2);
+  transition: color 350ms ease;
+}
+
+.stage.full-lyrics-mode .line.long .text,
+.stage.full-lyrics-mode .line.active.long .text {
+  font-size: calc(34px * var(--in-app-font-scale, 1)) !important;
+}
+
+.stage.full-lyrics-mode .line.short .text,
+.stage.full-lyrics-mode .line.active.short .text {
+  font-size: calc(48px * var(--in-app-font-scale, 1)) !important;
+}
+
+.stage.full-lyrics-mode .line.long .translation,
+.stage.full-lyrics-mode .line.active.long .translation {
+  font-size: calc(22px * var(--in-app-font-scale, 1)) !important;
+}
+
+
+.stage.full-lyrics-mode .line.active .text {
+  color: #ffffff;
+  text-shadow: 0 0 24px rgba(255, 255, 255, 0.15);
+}
+
+.stage.full-lyrics-mode .line.active .translation {
+  color: rgba(255, 255, 255, 0.58);
+}
+
+/* Romaji: visible on every line in full-lyrics mode */
+.stage.full-lyrics-mode .line .romaji {
+  display: block;
+}
+
+/* Completed line-synced lyrics stay highlighted. Word-synced lyrics keep
+   using their per-syllable .past state instead. */
+.stage.full-lyrics-mode .line.past .text {
+  color: rgba(255, 255, 255, 0.25);
+}
+
+.stage.full-lyrics-mode .line.past .translation {
+  color: rgba(255, 255, 255, 0.14);
+}
+
+.stage.full-lyrics-mode .line.line-synced.past .text {
+  color: #ffffff;
+}
+
+.stage.full-lyrics-mode .line.line-synced.past .translation {
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.lyrics-viewport {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* In full-lyrics-mode, the viewport scrolls, not the stage */
+.stage.full-lyrics-mode {
+  overflow-y: hidden !important;
+}
+
+.stage.full-lyrics-mode .lyrics-viewport {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  padding-top: var(--status-bar-height, 40px);
+  clip-path: inset(var(--status-bar-height, 40px) 0 0 0);
+  pointer-events: auto;
+  /* Re-enable pointer events for scrolling */
+}
+
+.stage.full-lyrics-mode .lyrics-viewport .lyrics {
+  pointer-events: auto;
+}
+
+.top-blur-bar {
+  display: none;
+}
+
+/* Hide the blur bar in All Lyrics mode since top controls are hidden */
+.stage.full-lyrics-mode .top-blur-bar {
+  opacity: 0;
+}
+
+/* Right-aligned layout rules (Landscape / folding screens) */
+.stage.right-aligned:not(.full-lyrics-mode) .lyrics {
+  left: 45%;
+  width: 55%;
+  align-items: flex-end;
+  top: 0 !important;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  /* Vertical centering within the safe area (status bar / cutout) */
+  padding-top: var(--status-bar-height, 28px);
+  padding-bottom: var(--status-bar-height, 28px);
+}
+
+/* In full-lyrics-mode, expand right-aligned lyrics container to full width */
+.stage.right-aligned.full-lyrics-mode .lyrics {
+  left: 0;
+  width: 100%;
+  align-items: flex-end;
+}
+
+/* Right-align text and scale transitions from right center in right-aligned mode */
+/* margin-right includes --safe-right for camera cutout in reverse landscape */
+.stage.right-aligned .line {
+  width: calc(100% - 24px - 24px - var(--safe-right, 0px));
+  margin-left: auto;
+  margin-right: calc(24px + var(--safe-right, 0px));
+  text-align: right;
+  transform-origin: right center;
+}
+
+/* In landscape focused mode, show ONLY the active line to fit tight screen heights */
+.stage.right-aligned:not(.full-lyrics-mode) .line:not(.active) {
+  display: none !important;
+}
+
+/* Dynamic responsive text sizing for right-aligned focused mode — sizes set by JS */
+.stage.right-aligned:not(.full-lyrics-mode) .line {
+  margin-bottom: 0 !important;
+}
+.stage.right-aligned:not(.full-lyrics-mode) .text {
+  font-size: var(--focused-text-size, 36px) !important;
+  line-height: 1.2 !important;
+}
+.stage.right-aligned:not(.full-lyrics-mode) .translation {
+  font-size: var(--focused-trans-size, 22px) !important;
+  margin-top: 4px !important;
+  line-height: 1.2 !important;
+}
+.stage.right-aligned:not(.full-lyrics-mode) .romaji {
+  font-size: var(--focused-romaji-size, 15px) !important;
+  margin-bottom: 2px !important;
+  line-height: 1.1 !important;
+}
+
+/* --- Upgraded Ruby Furigana Layouts --- */
+ruby {
+  ruby-align: center;
+  ruby-position: over;
+  -webkit-ruby-position: before;
+}
+
+rt {
+  font-size: 0.32em !important;
+  color: inherit;
+  opacity: 0.85;
+  user-select: none;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  padding-bottom: 0.12em;
+}
+
+/* --- Enhanced Syllable-Level Karaoke Highlights --- */
+.syllable {
+  display: inline-block;
+  white-space: pre;
+  color: rgba(255, 255, 255, 0.35); /* Dim inactive color */
+  transition: color 250ms ease;
+  text-shadow: none !important; /* Completely eliminate glaring shadow pop-in and glowing halos */
+}
+
+.syllable.past {
+  color: #ffffff; /* Fully highlighted active color */
+  transition: none !important; /* Eliminate flash when transitioning from active */
+}
+
+.syllable.active {
+  /* Real-time linear sweeping gradient */
+  background: linear-gradient(
+    to right,
+    #ffffff var(--progress, 0%),
+    rgba(255, 255, 255, 0.35) var(--progress, 0%)
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  display: inline-block;
+  transition: none !important; /* Avoid transitioning while sweeping */
+}
+
+/* Smoothly sweep both the Kanji base text and Furigana annotations in perfect lock-step, avoiding WebKit clipping bugs */
+.syllable.active:has(ruby) {
+  background: none !important;
+  -webkit-background-clip: initial !important;
+  -webkit-text-fill-color: initial !important;
+}
+
+.syllable.active ruby,
+.syllable.active rt {
+  background: linear-gradient(
+    to right,
+    #ffffff var(--progress, 0%),
+    rgba(255, 255, 255, 0.35) var(--progress, 0%)
+  ) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+/* Only visible while calibrating the cue clock; normal lyric styling stays intact. */
+.stage { -webkit-user-select: none; user-select: none; }
+.cue-position-badge {
+  position: fixed; left: 50%; bottom: calc(32px + env(safe-area-inset-bottom));
+  transform: translateX(-50%); z-index: 30; white-space: nowrap;
+  padding: 12px 20px; border-radius: 16px;
+  color: #101010; background: #4ad295;
+  font: 700 15px system-ui, sans-serif; pointer-events: none;
+  box-shadow: 0 8px 30px #0004;
+}
+.cue-position-badge[hidden] { display: none; }
+.cue-scrubbing, .cue-scrubbing .lyrics-viewport { overflow: hidden !important; }
