@@ -558,4 +558,6 @@ rt {
 /* Direct dragging follows the finger, then decays into the original eased row snap. */
 .cue-dragging .lyrics { transition: none !important; }
 .cue-dragging .line { transition: transform 140ms ease-out, opacity 140ms ease-out; }
+.cue-dragging .text, .cue-dragging .translation { transition: none; }
+.cue-settling .lyrics { transition: transform 180ms cubic-bezier(.2,.7,.3,1); }
 .stage:not(.full-lyrics-mode), .stage:not(.full-lyrics-mode) .lyrics-viewport { overflow: clip !important; }

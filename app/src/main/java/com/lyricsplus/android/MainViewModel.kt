@@ -37,6 +37,7 @@ data class LyricsUiState(
     val searchQuery: String = "",
     val searchPopular: Boolean = true,
     val searchResults: List<SongSearchMatch> = emptyList(),
+    val addingSongs: Set<String> = emptySet(),
     val isSearching: Boolean = false,
     val searchMessage: String = "",
     val libraryPage: Int = 0, // 0 = lyrics, 1 = saved songs, 2 = search
@@ -60,6 +61,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var timeline = CueTimeline()
     private var lyricsJob: Job? = null
     private var searchJob: Job? = null
+    private var searchMatches: List<SongSearchMatch> = emptyList()
+    private var searchedQuery = ""
     private var resumeAfterScrub = false
 
     init {
@@ -95,14 +98,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun backFromLibrary() = _uiState.update { it.copy(libraryPage = 0) }
 
     fun updateSearchQuery(query: String) {
+        if (query == _uiState.value.searchQuery) return
         searchJob?.cancel()
+        searchMatches = emptyList()
+        searchedQuery = ""
         _uiState.update { it.copy(searchQuery = query, searchResults = emptyList(), searchMessage = "", isSearching = false) }
     }
 
     fun setSearchPopular(popular: Boolean) {
         prefs.edit().putBoolean("search_popular", popular).apply()
         _uiState.update { it.copy(searchPopular = popular,
-            searchResults = sortSongSearchMatches(it.searchResults, it.searchQuery, popular)) }
+            searchResults = sortSongSearchMatches(searchMatches, searchedQuery, popular).take(90)) }
+        if (searchMatches.isEmpty() && !_uiState.value.isSearching && _uiState.value.searchQuery.isNotBlank()) searchSongs()
     }
 
     fun searchSongs() {
@@ -111,13 +118,41 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             _uiState.update { it.copy(isSearching = true, searchMessage = "", searchResults = emptyList()) }
-            val result = lyricsProvider.searchSongs(query, _uiState.value.searchPopular)
+            val result = lyricsProvider.searchSongs(query)
             ensureActive()
+            searchMatches = result.getOrDefault(emptyList())
+            searchedQuery = query
             _uiState.update { state -> result.fold(
-                onSuccess = { state.copy(isSearching = false, searchResults = sortSongSearchMatches(it, query, state.searchPopular),
+                onSuccess = { state.copy(isSearching = false, searchResults = sortSongSearchMatches(it, query, state.searchPopular).take(90),
                     searchMessage = if (it.isEmpty()) "没有找到歌曲，试试歌名加歌手" else "") },
                 onFailure = { state.copy(isSearching = false, searchMessage = "搜索失败，请检查网络后重试") }
             ) }
+        }
+    }
+
+    fun addSongToLibrary(track: NowPlaying) {
+        val key = track.libraryKey()
+        if (_uiState.value.library.any { it.key == key } || key in _uiState.value.addingSongs) return
+        _uiState.update { it.copy(addingSongs = it.addingSongs + key) }
+        viewModelScope.launch {
+            try {
+                val resolved = lyricsProvider.findSyncedLyrics(track).getOrThrow()
+                if (resolved.source == "纯音乐" || resolved.lyrics.isEmpty()) {
+                    toast("没有找到可用歌词，请尝试其他版本")
+                } else {
+                    withContext(Dispatchers.IO) {
+                        lyricsProvider.saveToCache(track, resolved.lyrics, resolved.source)
+                        libraryDb.saveLibrarySong(track, resolved.source)
+                    }
+                    reloadLibrary()
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                toast("添加失败，请检查网络后重试")
+            } finally {
+                _uiState.update { it.copy(addingSongs = it.addingSongs - key) }
+            }
         }
     }
 
@@ -180,7 +215,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun seekCue(positionMs: Long) {
         timeline = timeline.seek(positionMs, SystemClock.elapsedRealtime())
-        publishClock()
+        // The renderer owns the visual clock during a drag; publish once on release.
+        if (!_uiState.value.isScrubbing) publishClock()
     }
 
     fun endScrub() {

@@ -43,6 +43,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.geometry.Offset
@@ -315,23 +318,50 @@ private fun CueControls(state: LyricsUiState, viewModel: MainViewModel, song: co
 @Composable
 private fun LyricsHome(onSearch: () -> Unit, onLibrary: () -> Unit) {
     Column(Modifier.fillMaxSize().background(AppBackground).cuePageSwipe(onSearch, onLibrary)
-        .statusBarsPadding().navigationBarsPadding().padding(28.dp)) {
+        .statusBarsPadding().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(24.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Box(Modifier.size(32.dp).background(Brush.linearGradient(listOf(Color(0xFFD3A5FF), Color(0xFF8865E8))), RoundedCornerShape(9.dp)), contentAlignment = Alignment.Center) {
                 Text("L", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
             }
             Text("lyrics", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
         }
-        Spacer(Modifier.weight(1f))
-        Text("歌词", color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.ExtraBold)
-        Spacer(Modifier.height(24.dp))
-        Button(onClick = onSearch, colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color.Black),
-            shape = RoundedCornerShape(12.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 28.dp, vertical = 16.dp)) {
-            Text("搜索歌词", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(40.dp))
+        Text("使用方式", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
+        Text("播放的是歌词进度，音乐由其他设备播放。", color = Color(0xFF8D9490),
+            fontSize = 15.sp, lineHeight = 23.sp, modifier = Modifier.padding(top = 10.dp, bottom = 24.dp))
+        HomeNavigation("→", "搜索歌词", "右滑进入 · 输入歌名、歌手", onSearch)
+        Spacer(Modifier.height(12.dp))
+        HomeNavigation("←", "歌词列表", "左滑进入 · 保存与收藏的歌词", onLibrary)
+        Spacer(Modifier.height(32.dp))
+        Text("歌词页操作", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        HomeInstruction("播放 / 暂停", "点顶部播放键，启动或暂停提词。")
+        HomeInstruction("调整进度", "在歌词区域上下滑动；长按后精细调整。")
+        HomeInstruction("查看全部歌词", "点按集中歌词展开，点某句跳转；返回手势回到集中模式。")
+        HomeInstruction("添加与收藏", "搜索结果的 + 保存到列表，☆ 收藏当前歌曲。")
+        Spacer(Modifier.height(12.dp))
+    }
+}
+
+@Composable
+private fun HomeNavigation(arrow: String, title: String, detail: String, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(18.dp))
+        .border(1.dp, Outline, RoundedCornerShape(18.dp)).clickable(onClick = onClick).padding(18.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Text(arrow, color = Accent, fontSize = 30.sp, modifier = Modifier.padding(end = 18.dp))
+        Column {
+            Text(title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text(detail, color = Color(0xFF8D9490), fontSize = 14.sp, lineHeight = 21.sp,
+                modifier = Modifier.padding(top = 5.dp))
         }
-        Spacer(Modifier.weight(1f))
-        Text("右滑搜索   ·   左滑列表", color = Color(0xFF8D9490), fontSize = 13.sp,
-            modifier = Modifier.padding(bottom = 24.dp))
+    }
+}
+
+@Composable
+private fun HomeInstruction(title: String, detail: String) {
+    Column(Modifier.fillMaxWidth().padding(top = 18.dp)) {
+        Text(title, color = Accent, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Text(detail, color = Color(0xFFB4BAB6), fontSize = 14.sp, lineHeight = 22.sp,
+            modifier = Modifier.padding(top = 4.dp))
     }
 }
 

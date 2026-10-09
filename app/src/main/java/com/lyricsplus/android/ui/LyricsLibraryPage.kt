@@ -12,6 +12,7 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -51,6 +52,11 @@ fun LyricsLibraryPage(state: LyricsUiState, viewModel: MainViewModel, modifier: 
     var favoritesOnly by rememberSaveable { mutableStateOf(false) }
     var filter by rememberSaveable { mutableStateOf("") }
     val keyboard = LocalSoftwareKeyboardController.current
+    val resultsScroll = rememberLazyListState()
+    LaunchedEffect(state.searchPopular, state.searchResults) {
+        // LazyColumn otherwise retains the previous first item's key after reordering.
+        resultsScroll.scrollToItem(0)
+    }
     BackHandler { keyboard?.hide(); viewModel.backFromLibrary() }
 
     MaterialTheme(colorScheme = darkColorScheme(
@@ -111,17 +117,22 @@ fun LyricsLibraryPage(state: LyricsUiState, viewModel: MainViewModel, modifier: 
                 Text("${state.searchResults.size} 个结果", color = LibraryMuted, fontSize = 13.sp,
                     modifier = Modifier.padding(bottom = 12.dp))
             }
-            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp),
+            LazyColumn(Modifier.weight(1f), state = resultsScroll, verticalArrangement = Arrangement.spacedBy(10.dp),
                 contentPadding = PaddingValues(bottom = 24.dp)) {
                 items(state.searchResults, key = { it.track.libraryKey() }) { match ->
                     val track = match.track
                     val saved = state.library.firstOrNull { it.key == track.libraryKey() }
+                    val adding = track.libraryKey() in state.addingSongs
                     SongRow(track = track, sources = match.sources, selected = state.nowPlaying.libraryKey() == track.libraryKey(),
                         onSelect = { keyboard?.hide(); viewModel.selectSong(track) },
                         trailing = {
-                            Text(if (saved != null) "已保存" else "+", color = LibraryAccent,
-                                fontSize = if (saved != null) 12.sp else 26.sp,
-                                modifier = Modifier.padding(horizontal = 12.dp))
+                            TextButton(onClick = { if (saved == null && !adding) viewModel.addSongToLibrary(track) },
+                                modifier = Modifier.semantics { contentDescription =
+                                    if (saved != null) "已添加到列表 ${track.track}" else "添加到列表 ${track.track}" }) {
+                                if (adding) CircularProgressIndicator(Modifier.size(20.dp), color = LibraryAccent, strokeWidth = 2.dp)
+                                else Text(if (saved != null) "已保存" else "+", color = LibraryAccent,
+                                    fontSize = if (saved != null) 12.sp else 26.sp)
+                            }
                         })
                 }
             }

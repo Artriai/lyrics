@@ -4,11 +4,8 @@ import android.graphics.Bitmap
 import androidx.compose.ui.geometry.Offset
 import android.content.ContentValues
 import android.provider.MediaStore
-import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.ViewModelProvider
 import com.lyricsplus.android.data.SongSearchMatch
-import com.lyricsplus.android.data.mergeSongSearchMatches
-import com.lyricsplus.android.ui.LyricsLibraryPage
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -36,7 +33,7 @@ class LyricsFlowTest {
 
     @Test fun offlineLibraryFavoritesSearchAndCueControls() {
         val app = ApplicationProvider.getApplicationContext<android.app.Application>()
-        app.deleteDatabase("lyrics_cache.db")
+        clearDatabase(app)
         app.getSharedPreferences("lyrics_plus_prefs", 0).edit().clear().putBoolean("auto_check_updates", false).commit()
         app.getSharedPreferences("lyrics_plus_stats", 0).edit().putBoolean("enabled", false).commit()
         val track = NowPlaying(track = "这一首想唱的歌", artist = "lyrics", album = "我的歌单", durationSeconds = 60)
@@ -81,7 +78,7 @@ class LyricsFlowTest {
             compose.onNodeWithText("周杰伦").assertIsDisplayed()
             screenshot(app, "02-search")
             back(scenario)
-            compose.onNodeWithText("歌词", substring = false).assertIsDisplayed()
+            compose.onNodeWithText("使用方式").assertIsDisplayed()
             compose.onRoot().performTouchInput { swipeLeft() }
             compose.onNodeWithText(track.track).performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("开始提词").fetchSemanticsNodes().isNotEmpty() }
@@ -109,11 +106,19 @@ class LyricsFlowTest {
             screenshot(app, "08-about")
             back(scenario)
             compose.onNodeWithContentDescription("设置").assertIsDisplayed()
-            // A normal vertical swipe, without a hold, adjusts focused lyric time.
+            val oldPosition = app.getSharedPreferences("lyrics_plus_prefs", 0).getLong("last_position", 0)
+            // Starting in the empty header area must not adjust the cue clock.
             compose.onRoot().performTouchInput {
-                swipe(Offset(width * .3f, height * .7f), Offset(width * .3f, height * .5f), 250)
+                swipe(Offset(width * .3f, height * .2f), Offset(width * .3f, height * .3f), 250)
             }
-            compose.waitUntil(10_000) { app.getSharedPreferences("lyrics_plus_prefs", 0).getLong("last_position", 0) > 0 }
+            Thread.sleep(500)
+            assertEquals(oldPosition, app.getSharedPreferences("lyrics_plus_prefs", 0).getLong("last_position", 0))
+            // A normal vertical swipe, without a hold, adjusts focused lyric time.
+            val cueY = webJs(scenario, "(() => {const r=document.querySelector('.line.active').getBoundingClientRect();return (r.top+Math.min(40,r.height/2))/innerHeight;})()").toFloat()
+            compose.onRoot().performTouchInput {
+                swipe(Offset(width * .3f, height * cueY), Offset(width * .3f, height * cueY - 100), 250)
+            }
+            compose.waitUntil(10_000) { app.getSharedPreferences("lyrics_plus_prefs", 0).getLong("last_position", 0) != oldPosition }
             webJs(scenario, "window.LyricsPlus.toggleMode();window.LyricsPlus.toggleMode()")
             Thread.sleep(650)
             assertEquals("0", webJs(scenario, "document.getElementById('stage').scrollTop"))
@@ -149,24 +154,65 @@ class LyricsFlowTest {
         } finally { scenario.close(); db.close() }
     }
 
-    @Test fun searchSourceLabelsShowMultipleMatches() {
+    @Test fun searchSortAndAddStayOnSearchPage() {
         val app = ApplicationProvider.getApplicationContext<android.app.Application>()
-        app.getSharedPreferences("lyrics_plus_prefs", 0).edit().putBoolean("auto_check_updates", false).commit()
-        val track = NowPlaying(track = "同一首歌，多个来源", artist = "lyrics", album = "匹配来源", durationSeconds = 200)
-        val matches = mergeSongSearchMatches(listOf("网易云音乐", "QQ音乐", "LRCLIB").map { SongSearchMatch(track, listOf(it)) })
+        clearDatabase(app)
+        app.getSharedPreferences("lyrics_plus_prefs", 0).edit().clear().putBoolean("auto_check_updates", false).commit()
+        val track = NowPlaying(track = "only my railgun", artist = "fripSide", album = "only my railgun", durationSeconds = 257)
+        val matches = listOf(SongSearchMatch(track, listOf("网易云音乐", "QQ音乐", "LRCLIB"), 100),
+            SongSearchMatch(track.copy(track = "only my", artist = "Singer"), listOf("网易云音乐"), 0)) +
+            (0..100).map { SongSearchMatch(track.copy(track = "only my cover $it", artist = "Cover"), listOf("网易云音乐"), 90) }
+        val db = LyricsCacheDatabase(app)
+        db.saveLyrics(track.libraryKey(), listOf(LyricsLine(0, "测试离线添加歌词")), "网易云音乐")
         val scenario = ActivityScenario.launch(MainActivity::class.java)
         try {
-            scenario.onActivity { activity ->
-                val vm = ViewModelProvider(activity)[MainViewModel::class.java]
-                val content = activity.findViewById<ViewGroup>(android.R.id.content).getChildAt(0) as ComposeView
-                content.setContent { LyricsLibraryPage(LyricsUiState(libraryPage = 2, searchQuery = "想唱的歌", searchResults = matches), vm) }
+            lateinit var vm: MainViewModel
+            scenario.onActivity { vm = ViewModelProvider(it)[MainViewModel::class.java] }
+            compose.waitUntil(10_000) { !vm.uiState.value.isInitializing }
+            scenario.onActivity {
+                vm.updateSearchQuery("only my")
+                // Seed the provider's complete result pool; exercise the real UI and ViewModel offline.
+                MainViewModel::class.java.getDeclaredField("searchMatches").apply { isAccessible = true }.set(vm, matches)
+                MainViewModel::class.java.getDeclaredField("searchedQuery").apply { isAccessible = true }.set(vm, "only my")
+                vm.setSearchPopular(true)
+                vm.openSearch()
             }
             compose.onNodeWithText("网易云音乐").assertIsDisplayed()
             compose.onNodeWithText("QQ音乐").assertIsDisplayed()
             compose.onNodeWithText("LRCLIB").assertIsDisplayed()
             compose.onNodeWithText(track.track).assertIsDisplayed()
             screenshot(app, "07-search-sources")
-        } finally { scenario.close() }
+            compose.onNodeWithText("匹配").performClick()
+            compose.waitUntil(10_000) { vm.uiState.value.searchResults.first().track.track == "only my" }
+            assertEquals(90, vm.uiState.value.searchResults.size)
+            compose.onNode(hasScrollToIndexAction()).performScrollToIndex(50)
+            compose.onNodeWithText("热门").performClick()
+            compose.waitUntil(10_000) { vm.uiState.value.searchResults.first().track.track == track.track }
+            compose.onNodeWithText(track.track).assertIsDisplayed()
+            compose.onNodeWithContentDescription("添加到列表 ${track.track}").performClick()
+            compose.waitUntil(10_000) { vm.uiState.value.library.any { it.key == track.libraryKey() } }
+            assertFalse(vm.uiState.value.nowPlaying.hasTrack)
+            assertEquals(2, vm.uiState.value.libraryPage)
+            assertNotNull(db.getLyrics(track.libraryKey()))
+            compose.onNodeWithContentDescription("已添加到列表 ${track.track}").performClick()
+            assertEquals(2, vm.uiState.value.libraryPage)
+            screenshot(app, "09-added-to-list")
+            compose.onNodeWithText("匹配").performClick()
+            compose.waitUntil(10_000) { vm.uiState.value.searchResults.first().track.track == "only my" }
+            compose.onNodeWithText("热门").performClick()
+            compose.onNodeWithText(track.track).performClick()
+            compose.waitUntil(10_000) { vm.uiState.value.nowPlaying.hasTrack && !vm.uiState.value.isLoadingLyrics }
+            assertEquals(track.track, vm.uiState.value.nowPlaying.track)
+            assertEquals(0, vm.uiState.value.libraryPage)
+        } finally { scenario.close(); db.close() }
+    }
+
+    private fun clearDatabase(app: android.app.Application) {
+        // Keep the provider singleton's SQLite connection valid between test methods.
+        LyricsCacheDatabase(app).use { db ->
+            db.writableDatabase.execSQL("DELETE FROM library_songs")
+            db.writableDatabase.execSQL("DELETE FROM cached_lyrics")
+        }
     }
 
     private fun back(scenario: ActivityScenario<MainActivity>) {
