@@ -17,12 +17,15 @@
 
 ## 独立发布
 
-- 产品分支：`lyrics`；主分支保留 Lyrics Plus。
+- 独立仓库：[Artriai/lyrics](https://github.com/Artriai/lyrics)，默认分支为 `main`。
+- 从 [Lyrics Plus Android 的 lyrics 分支](https://github.com/Artriai/lyrics-plus-android/tree/lyrics) 迁移，保留完整提交历史。
 - 应用名称：`lyrics`；应用 ID：`com.lyricsplus.lyrics`，可与原版同时安装。
 - 图标沿用原 L 造型，渐变改为紫色。
-- 向 `lyrics` 提交后自动运行单元测试并构建 `lyrics.apk`。
-- 发布标签为 `lyrics-v<version>-build-<run_number>-<attempt>`，不修改正式版 Latest。
-- 应用内更新只检查 `lyrics-v` 发布通道。
+- 向 `main` 提交后自动运行单元测试并构建 `lyrics.apk`。
+- 发布标签为 `lyrics-v<version>-build-<build_number>-<attempt>`，发布为本仓库 Latest。
+- 构建号从原仓库的 37 继续递增，保留应用 ID 和签名，可覆盖安装原 lyrics 版本。
+- 应用内更新检查本仓库的 `lyrics-v` 发布通道。
+- 下载地址：[Releases](https://github.com/Artriai/lyrics/releases/latest)。
 
 ## 构建
 

@@ -95,7 +95,7 @@ fun LyricsAboutPage(viewModel: MainViewModel, onBack: () -> Unit, modifier: Modi
             Text("lyrics", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 16.dp))
             Text(BuildConfig.VERSION_NAME, color = Color(0xFF8D9490), fontSize = 13.sp,
                 modifier = Modifier.padding(top = 6.dp, bottom = 28.dp))
-            AboutLink("项目地址", "GitHub") { uri.openUri("https://github.com/Artriai/lyrics-plus-android/tree/lyrics") }
+            AboutLink("项目地址", "GitHub") { uri.openUri("https://github.com/Artriai/lyrics") }
             Spacer(Modifier.height(12.dp))
             AboutLink("检查更新", BuildConfig.VERSION_NAME) { viewModel.checkForUpdates() }
         }

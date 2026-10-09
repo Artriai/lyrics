@@ -3,7 +3,7 @@ name: Build and Release lyrics
 on:
   push:
     branches:
-      - lyrics
+      - main
   workflow_dispatch:
 
 concurrency:
@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   build:
-    if: github.ref == 'refs/heads/lyrics'
+    if: github.ref == 'refs/heads/main'
     timeout-minutes: 30
     needs: native-ui
     name: Build & Sign Release APK
@@ -53,17 +53,20 @@ jobs:
             exit 1
           fi
 
-          RELEASE_TAG="lyrics-v${VERSION_NAME}-build-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+          # Continue build numbers after the source repository (latest: 37).
+          BUILD_NUMBER=$((37 + GITHUB_RUN_NUMBER))
+          RELEASE_TAG="lyrics-v${VERSION_NAME}-build-${BUILD_NUMBER}-${GITHUB_RUN_ATTEMPT}"
 
           echo "version_name=${VERSION_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "build_number=${BUILD_NUMBER}" >> "${GITHUB_OUTPUT}"
           echo "tag=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
 
       - name: Build with Gradle
         env:
           LYRICS_PLUS_STATS_ENDPOINT: ${{ vars.LYRICS_PLUS_STATS_ENDPOINT }}
-        run: bash scripts/assemble-official-release.sh testDebugUnitTest -PlyricsBuildNumber="${GITHUB_RUN_NUMBER}"
+        run: bash scripts/assemble-official-release.sh testDebugUnitTest -PlyricsBuildNumber="${{ steps.version.outputs.build_number }}"
 
-      - name: Name Preview APK
+      - name: Name Release APK
         run: cp app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/lyrics.apk
 
       - name: Calculate SHA-256 Hash
@@ -84,7 +87,7 @@ jobs:
           body: |
             ## 📦 lyrics ${{ steps.version.outputs.tag }}
             
-            Branch: `lyrics`
+            Branch: `main`
             Commit: `${{ github.sha }}`
             Standalone lyric cue board. Installs alongside Lyrics Plus; no Spotify or notification access required.
 
@@ -96,14 +99,14 @@ jobs:
             > * **Windows (PowerShell):** `Get-FileHash lyrics.apk -Algorithm SHA256`
             > * **Linux / macOS:** `sha256sum lyrics.apk`
           draft: false
-          prerelease: true
-          make_latest: false
+          prerelease: false
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   native-ui:
     name: Verify lyrics on Android
-    if: github.ref == 'refs/heads/lyrics'
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
