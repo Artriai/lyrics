@@ -51,6 +51,9 @@ fun LyricsLibraryPage(state: LyricsUiState, viewModel: MainViewModel, modifier: 
     val keyboard = LocalSoftwareKeyboardController.current
     BackHandler { keyboard?.hide(); viewModel.backFromLibrary() }
 
+    MaterialTheme(colorScheme = darkColorScheme(
+        primary = LibraryAccent, surface = LibraryPanel, background = LibraryBackground
+    )) {
     Column(
         modifier.background(LibraryBackground)
             .pointerInput(searching) {
@@ -187,6 +190,7 @@ fun LyricsLibraryPage(state: LyricsUiState, viewModel: MainViewModel, modifier: 
             text = { Text(song.track.track, color = LibraryMuted) },
             confirmButton = { TextButton(onClick = { viewModel.removeSong(song); removeTarget = null }) { Text("删除", color = LibraryAccent) } },
             dismissButton = { TextButton(onClick = { removeTarget = null }) { Text("取消", color = LibraryMuted) } })
+    }
     }
 }
 
