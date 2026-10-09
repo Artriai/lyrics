@@ -1340,7 +1340,7 @@
       cueSeek(Number(state.lyrics[Number(line.dataset.index)].startTimeMs), Number(line.dataset.index), 0);
       cueBridge("endScrub");
       onUserScrollInteraction();
-    } else if (line) toggleFullLyricsMode();
+    } else if (!line) toggleFullLyricsMode();
   });
 
   // Re-calculate layout and scroll offsets on window resize (rotation / unfolding)
