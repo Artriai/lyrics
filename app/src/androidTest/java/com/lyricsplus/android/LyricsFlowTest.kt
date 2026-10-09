@@ -88,6 +88,10 @@ class LyricsFlowTest {
             compose.onNodeWithContentDescription("开始提词").performClick()
             compose.onNodeWithContentDescription("暂停提词").assertIsDisplayed().performClick()
             compose.onNodeWithContentDescription("开始提词").assertIsDisplayed()
+            compose.waitUntil(10_000) {
+                webJs(scenario, "document.querySelectorAll('.line').length === 3 && !!document.querySelector('.line.active')") == "true"
+            }
+            assertEquals("true", webJs(scenario, "(() => {const row=document.querySelector('.line.active');const r=row.getBoundingClientRect();return r.top>=0 && r.bottom<=innerHeight && getComputedStyle(row).filter==='none';})()"))
             screenshot(app, "03-lyrics")
             compose.onNodeWithContentDescription("取消收藏当前歌曲").assertIsDisplayed()
             compose.onNodeWithContentDescription("设置").assertIsDisplayed().performClick()
@@ -113,6 +117,7 @@ class LyricsFlowTest {
             webJs(scenario, "window.LyricsPlus.toggleMode();window.LyricsPlus.toggleMode()")
             Thread.sleep(650)
             assertEquals("0", webJs(scenario, "document.getElementById('stage').scrollTop"))
+            assertEquals("true", webJs(scenario, "(() => {const row=document.querySelector('.line.active');const r=row.getBoundingClientRect();return r.top>=0 && r.bottom<=innerHeight && getComputedStyle(row).filter==='none';})()"))
             webJs(scenario, "window.LyricsPlus.toggleMode()")
             compose.waitUntil(10_000) { webJs(scenario, "document.getElementById('stage').classList.contains('full-lyrics-mode')") == "true" }
             Thread.sleep(1100) // Ignore the compatibility click after the preceding swipe.
