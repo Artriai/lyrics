@@ -2,6 +2,7 @@ package com.lyricsplus.android.lyrics
 
 import com.lyricsplus.android.data.LyricsLine
 import com.lyricsplus.android.data.NowPlaying
+import com.lyricsplus.android.data.SongSearchMatch
 import com.lyricsplus.android.data.LyricsSearchResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -34,16 +35,18 @@ class NeteaseClient {
         }
     }
 
-    suspend fun searchSongs(query: String): List<NowPlaying> = withContext(Dispatchers.IO) {
+    suspend fun searchSongs(query: String): List<SongSearchMatch> = withContext(Dispatchers.IO) {
         val response = request("https://music.163.com/api/cloudsearch/pc?csrf_token=&type=1&offset=0&limit=30&s=" + query.urlEncode())
         check(response.code in 200..299) { "网易云音乐搜索失败 (${response.code})" }
         val songs = JSONObject(response.body).optJSONObject("result")?.optJSONArray("songs")
             ?: return@withContext emptyList()
-        (0 until songs.length()).map { songs.getJSONObject(it) }.map { song ->
-            NowPlaying(track = song.optString("name"), artist = song.artistNames(),
+        (0 until songs.length()).map { songs.getJSONObject(it) }.mapIndexed { rank, song ->
+            SongSearchMatch(NowPlaying(track = song.optString("name"), artist = song.artistNames(),
                 album = (song.optJSONObject("al") ?: song.optJSONObject("album"))?.optString("name").orEmpty(),
-                durationSeconds = ((song.optLong("dt", song.optLong("duration")) + 500) / 1000).toInt())
-        }.filter { it.track.isNotBlank() }
+                durationSeconds = ((song.optLong("dt", song.optLong("duration")) + 500) / 1000).toInt()),
+                listOf("网易云音乐"), popularity = if (song.has("pop") && !song.isNull("pop")) song.optDouble("pop").toInt().coerceIn(0, 100) else null,
+                sourceRanks = mapOf("网易云音乐" to rank))
+        }.filter { it.track.track.isNotBlank() }
     }
 
     private fun searchSongId(track: NowPlaying): Pair<Long, Int>? {

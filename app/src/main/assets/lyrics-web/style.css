@@ -554,3 +554,8 @@ rt {
 }
 .stage.right-aligned.full-lyrics-mode .lyrics { left: 0; width: 100%; }
 .stage:not(.full-lyrics-mode) { touch-action: none; }
+
+/* Direct dragging follows the finger, then decays into the original eased row snap. */
+.cue-dragging .lyrics { transition: none !important; }
+.cue-dragging .line { transition: transform 140ms ease-out, opacity 140ms ease-out; }
+.stage:not(.full-lyrics-mode), .stage:not(.full-lyrics-mode) .lyrics-viewport { overflow: clip !important; }

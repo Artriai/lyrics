@@ -191,8 +191,8 @@ private fun LyricsOverlay(
     LaunchedEffect(webController.isReady, isMultiPane, headerHeightPx, webController.isFullLyricsMode) {
         webController.pushHeaderHeight(if (isMultiPane || webController.isFullLyricsMode) 0 else headerHeightPx)
     }
-    BackHandler(enabled = state.libraryPage == 0 && webController.isFullLyricsMode && !isExpanded && !showAbout) { webController.toggleLyricsMode() }
-    BackHandler(enabled = isExpanded) { isExpanded = false }
+    BackHandler(enabled = state.nowPlaying.hasTrack && state.libraryPage == 0 && webController.isFullLyricsMode && !isExpanded && !showAbout) { webController.toggleLyricsMode() }
+    BackHandler(enabled = isExpanded && state.nowPlaying.hasTrack) { isExpanded = false }
     BackHandler(enabled = showAbout) { showAbout = false }
 
     Box(Modifier.fillMaxSize()) {
@@ -230,15 +230,14 @@ private fun LyricsOverlay(
                         Spacer(Modifier.weight(.55f))
                     }
                 } else if (!webController.isFullLyricsMode) {
-                    Column(Modifier.align(Alignment.TopCenter).zIndex(1f).graphicsLayer {}.fillMaxWidth().statusBarsPadding()
+                    Row(Modifier.align(Alignment.TopCenter).zIndex(1f).graphicsLayer {}.fillMaxWidth().statusBarsPadding()
                         .padding(horizontal = 24.dp, vertical = 18.dp)
-                        .onGloballyPositioned { headerHeightPx = it.size.height }) {
-                        TrackTitle(state, false)
-                        Row(Modifier.fillMaxWidth().padding(top = 8.dp),
-                            horizontalArrangement = Arrangement.Start,
-                            verticalAlignment = Alignment.CenterVertically) {
-                            CueControls(state, viewModel, currentSong)
-                        }
+                        .onGloballyPositioned { headerHeightPx = it.size.height },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column(Modifier.weight(1f)) { TrackTitle(state, false) }
+                        Spacer(Modifier.width(16.dp))
+                        CueControls(state, viewModel, currentSong)
                     }
                 }
             }
@@ -246,7 +245,7 @@ private fun LyricsOverlay(
                 DebugChip(webController.debugMessage, Modifier.align(Alignment.BottomStart)
                     .navigationBarsPadding().padding(10.dp))
             }
-            if (isExpanded) {
+            if (isExpanded && state.nowPlaying.hasTrack) {
                 Box(Modifier.fillMaxSize().zIndex(2f).noRippleClickable { isExpanded = false })
                 Column(Modifier.align(Alignment.BottomEnd).zIndex(2f).graphicsLayer {}.navigationBarsPadding()
                     .padding(end = 24.dp, bottom = 80.dp)
@@ -276,7 +275,7 @@ private fun LyricsOverlay(
                     MenuActionRow("关于项目", "ⓘ") { isExpanded = false; showAbout = true }
                 }
             }
-            Box(Modifier.align(Alignment.BottomEnd).zIndex(3f).graphicsLayer {}.navigationBarsPadding().padding(24.dp)
+            if (state.nowPlaying.hasTrack) Box(Modifier.align(Alignment.BottomEnd).zIndex(3f).graphicsLayer {}.navigationBarsPadding().padding(24.dp)
                 .size(44.dp).background(if (isExpanded) Accent else Color(0x55323634), CircleShape)
                 .semantics { contentDescription = if (isExpanded) "关闭设置" else "设置" }
                 .noRippleClickable { isExpanded = !isExpanded }, contentAlignment = Alignment.Center) {
@@ -301,15 +300,15 @@ private fun TrackTitle(state: LyricsUiState, centered: Boolean) {
 
 @Composable
 private fun CueControls(state: LyricsUiState, viewModel: MainViewModel, song: com.lyricsplus.android.data.LibrarySong?) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Box(Modifier.size(48.dp).background(Color(0x26323634), CircleShape)
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Box(Modifier.size(44.dp)
             .semantics { contentDescription = if (song?.favorite == true) "取消收藏当前歌曲" else "收藏当前歌曲" }
             .noRippleClickable { if (song != null) viewModel.toggleFavorite(song) }, contentAlignment = Alignment.Center) {
             Text(if (song?.favorite == true) "★" else "☆", fontSize = 24.sp,
                 color = if (song?.favorite == true) Accent else Color.White.copy(alpha = if (song == null) .3f else 1f))
         }
-        PlayPauseButton(state.playback.isPlaying, viewModel::togglePlayback, Modifier.background(Color(0x26323634), CircleShape))
-        SkipNextButton(viewModel::skipToNext, Modifier.background(Color(0x26323634), CircleShape))
+        Box(Modifier.height(20.dp).width(1.dp).background(Color(0x26FFFFFF)))
+        PlayPauseButton(state.playback.isPlaying, viewModel::togglePlayback)
     }
 }
 
@@ -324,16 +323,15 @@ private fun LyricsHome(onSearch: () -> Unit, onLibrary: () -> Unit) {
             Text("lyrics", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
         }
         Spacer(Modifier.weight(1f))
-        Text("下一首，\n唱你想唱的。", color = Color.White, fontSize = 38.sp, lineHeight = 48.sp, fontWeight = FontWeight.ExtraBold)
-        Text("让歌词跟着你", color = Color(0xFF8D9490), fontSize = 17.sp, modifier = Modifier.padding(top = 14.dp, bottom = 28.dp))
+        Text("歌词", color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.ExtraBold)
+        Spacer(Modifier.height(24.dp))
         Button(onClick = onSearch, colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color.Black),
             shape = RoundedCornerShape(12.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 28.dp, vertical = 16.dp)) {
             Text("搜索歌词", fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
-        Spacer(Modifier.weight(.75f))
-        Text("右滑搜索   ·   左滑列表", color = Color(0xFF8D9490), fontSize = 13.sp)
-        Text("离线歌词 · 上下滑动调整进度", color = Color(0x668D9490), fontSize = 12.sp,
-            modifier = Modifier.padding(top = 8.dp, bottom = 64.dp))
+        Spacer(Modifier.weight(1f))
+        Text("右滑搜索   ·   左滑列表", color = Color(0xFF8D9490), fontSize = 13.sp,
+            modifier = Modifier.padding(bottom = 24.dp))
     }
 }
 
@@ -417,7 +415,7 @@ private fun PlayPauseButton(
 ) {
     Box(
         modifier = modifier
-            .size(48.dp)
+            .size(44.dp)
             .semantics { contentDescription = if (isPlaying) "暂停提词" else "开始提词" }
             .clickable(
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
@@ -455,38 +453,6 @@ private fun PlayPauseButton(
                 }
                 drawPath(path, color = Color.White)
             }
-        }
-    }
-}
-
-@Composable
-private fun SkipNextButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .size(48.dp)
-            .clickable(
-                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                indication = null
-            ) { onClick() },
-        contentAlignment = Alignment.Center
-    ) {
-        Canvas(modifier = Modifier.size(24.dp)) {
-            val path = Path().apply {
-                moveTo(size.width * 0.22f, size.height * 0.24f)
-                lineTo(size.width * 0.64f, size.height * 0.5f)
-                lineTo(size.width * 0.22f, size.height * 0.76f)
-                close()
-            }
-            drawPath(path, color = Color.White)
-            
-            drawRect(
-                color = Color.White,
-                topLeft = Offset(size.width * 0.69f, size.height * 0.24f),
-                size = Size(size.width * 0.12f, size.height * 0.52f)
-            )
         }
     }
 }

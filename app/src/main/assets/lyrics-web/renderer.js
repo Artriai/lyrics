@@ -30,6 +30,7 @@
     resumeTime: 0
   };
 
+  var layoutGeneration = 0;
   var prevActiveIndex = -1;
   var cachedActiveSyllables = [];
 
@@ -139,7 +140,9 @@
     }
   }
 
-  function setPlaybackState(positionMs, isPlaying, forcePosition) {
+  function setPlaybackState(positionMs, isPlaying, forcePosition, fromGesture) {
+    // Native bridge echoes can lag by 150ms; the gesture owns the visual clock until it ends.
+    if (!fromGesture && (cueTouch && cueTouch.scrubbing || cueMotion)) return;
     try {
       var wasPlaying = playback.isPlaying;
       var newIsPlaying = !!isPlaying;
@@ -200,6 +203,7 @@
   }
 
   function setReadingMode(mode) {
+    finishCueTouch(true);
     try {
       state.readingMode = Number(mode) || 0; // 0=None, 1=Romaji, 2=Furigana
       // Mode change requires DOM content changes, so do a full render
@@ -213,6 +217,7 @@
   var _isRightAligned = false;
 
   function setRightAligned(rightAligned) {
+    finishCueTouch(true);
     try {
       var changed = _isRightAligned !== !!rightAligned;
       _isRightAligned = !!rightAligned;
@@ -807,23 +812,31 @@
       }
     }
 
-    // Smoothly move the container so the active line stays at the anchor position
-    // In right-aligned mode, CSS flex centering handles positioning
+    // Query the current row in the frame, never a detached/stale row snapshot.
+    var generation = layoutGeneration;
     requestAnimationFrame(function () {
-      if (!_isRightAligned && lines[active]) {
-        var activeLine = lines[active];
-        var offset = activeLine.offsetTop;
-        lyricsEl.style.transform = "translateY(-" + offset + "px)";
-      }
-      fitFocusedFontSize();
+      if (generation !== layoutGeneration || state.isFullLyricsMode || cueTouch && cueTouch.scrubbing || cueMotion) return;
+      alignFocusedRow();
     });
   }
+
+  function alignFocusedRow() {
+    if (state.isFullLyricsMode) return;
+    stageEl.scrollTop = 0;
+    getViewport().scrollTop = 0;
+    var activeLine = lyricsEl.querySelector('.line.active');
+    lyricsEl.style.transform = _isRightAligned || !activeLine ? "none" : "translateY(-" + activeLine.offsetTop + "px)";
+    fitFocusedFontSize();
+  }
+
+  function getViewport() { return document.querySelector('.lyrics-viewport') || stageEl; }
 
   /**
    * Full render – builds or rebuilds all DOM nodes.
    * Called on initial load, lyrics change, romaji toggle, or mode switch.
    */
   function renderFull() {
+    var generation = ++layoutGeneration;
     if (!state.lyrics.length) {
       lyricsEl.innerHTML = "";
       emptyEl.hidden = false;
@@ -863,21 +876,12 @@
     lyricsEl.innerHTML = html;
 
     requestAnimationFrame(function () {
-      var lines = lyricsEl.querySelectorAll(".line");
-      if (lines[active]) {
-        var activeLine = lines[active];
-        var offset = activeLine.offsetTop;
-        if (state.isFullLyricsMode) {
-          lyricsEl.style.transform = "none";
-          scrollToActiveIfNeeded(activeLine);
-        } else if (_isRightAligned) {
-          // CSS flex centering handles positioning in right-aligned focused mode
-          lyricsEl.style.transform = "none";
-        } else {
-          lyricsEl.style.transform = "translateY(-" + offset + "px)";
-        }
-      }
-      fitFocusedFontSize();
+      if (generation !== layoutGeneration) return;
+      var activeLine = lyricsEl.querySelector('.line.active');
+      if (state.isFullLyricsMode) {
+        lyricsEl.style.transform = "none";
+        if (activeLine) scrollToActiveIfNeeded(activeLine);
+      } else alignFocusedRow();
       recacheActiveSyllables();
       updatePlaybackPosition();
     });
@@ -974,6 +978,7 @@
   }
 
   function setInAppFontScale(scale) {
+    finishCueTouch(true);
     try {
       var s = Number(scale) || 1.0;
       stageEl.style.setProperty('--in-app-font-scale', s);
@@ -1057,6 +1062,8 @@
 
   // Continuous spatial seeking. Row height maps to timed syllables, not just line starts.
   var cueTouch = null;
+  var cueMotion = null;
+  var cueMotionFrame = null;
   var cueHoldTimer = null;
   var suppressClickUntil = 0;
   var cueGuide = document.createElement("div");
@@ -1127,13 +1134,20 @@
 
   function cueSeek(position, index, phase) {
     position = Math.max(0, Math.round(position));
-    setPlaybackState(position, false, true);
+    setPlaybackState(position, false, true, true);
+    if (clampedActiveIndex() !== index) phase = cueTimeToPhase(clampedActiveIndex(), position);
     if (!state.isFullLyricsMode) {
       var activeLine = lyricsEl.querySelector('.line.active');
+      var context = cueTouch || cueMotion;
       if (activeLine) {
-        if (!_isRightAligned) lyricsEl.style.transform = "translateY(-" + activeLine.offsetTop + "px)";
-        var rect = activeLine.getBoundingClientRect();
-        cueGuide.style.top = Math.max(32, Math.min(window.innerHeight - 40, rect.top + rect.height * phase)) + "px";
+        if (!_isRightAligned) {
+          var within = context && !context.fine ? phase * activeLine.offsetHeight - context.initialWithin : 0;
+          lyricsEl.style.transform = "translateY(-" + (activeLine.offsetTop + within) + "px)";
+        }
+        if (context && context.fine) {
+          var rect = activeLine.getBoundingClientRect();
+          cueGuide.style.top = Math.max(32, Math.min(window.innerHeight - 40, rect.top + rect.height * phase)) + "px";
+        }
       }
     }
     cueBridge("seekCue", position);
@@ -1141,7 +1155,9 @@
   }
 
   function cueSeekAtHeight(target) {
-    var rows = cueTouch.rows;
+    var context = cueTouch || cueMotion;
+    if (!context) return;
+    var rows = context.rows;
     var index = 0;
     for (var i = 1; i < rows.length; i++) {
       if (target >= rows[i].top) index = i;
@@ -1157,13 +1173,15 @@
         position += gapFraction * (Number(state.lyrics[index + 1].startTimeMs) - position);
       }
     }
+    context.target = target;
     cueSeek(position, index, phase);
   }
 
-  function beginCueTouch(pressedIndex) {
+  function beginCueTouch(pressedIndex, fine) {
     if (!cueTouch || !state.lyrics.length || cueTouch.scrubbing) return;
     clearCueHold();
     cueTouch.scrubbing = true;
+    cueTouch.fine = !!fine;
     suppressClickUntil = Date.now() + 1000;
     var lines = lyricsEl.querySelectorAll(".line");
     var initialIndex = state.isFullLyricsMode ? pressedIndex : clampedActiveIndex();
@@ -1176,10 +1194,11 @@
     var position = playback.positionMs + (playback.isPlaying ? performance.now() - playback.updatedAt : 0);
     var phase = state.isFullLyricsMode ? Math.max(0, Math.min(1, (cueTouch.y - rect.top) / rect.height)) : cueTimeToPhase(initialIndex, position);
     cueTouch.anchorOffset = cueTouch.rows[initialIndex].top + phase * cueTouch.rows[initialIndex].height;
+    cueTouch.initialWithin = phase * rect.height;
     cueTouch.scrollTop = getScrollContainer().scrollTop;
     cueGuide.style.top = Math.max(32, Math.min(window.innerHeight - 40, cueTouch.y)) + "px";
-    stageEl.classList.add("cue-scrubbing");
-    cueGuide.hidden = false;
+    stageEl.classList.add(fine ? "cue-scrubbing" : "cue-dragging");
+    cueGuide.hidden = !fine;
     userScrolling = true;
     if (scrollResumeTimer !== null) clearTimeout(scrollResumeTimer);
     scrollResumeTimer = null;
@@ -1188,28 +1207,74 @@
     else cueSeek(position, initialIndex, phase);
   }
 
+  function finishCueMotion() {
+    if (cueMotionFrame !== null) cancelAnimationFrame(cueMotionFrame);
+    cueMotionFrame = null;
+    if (!cueMotion) return;
+    cueMotion = null;
+    completeCueGesture();
+  }
+
+  function completeCueGesture() {
+    stageEl.classList.remove("cue-scrubbing", "cue-dragging");
+    cueGuide.hidden = true;
+    cueBridge("endScrub");
+    if (state.isFullLyricsMode) onUserScrollInteraction();
+    else { userScrolling = false; alignFocusedRow(); }
+  }
+
+  function startCueMotion(context) {
+    cueMotion = context;
+    var velocity = Math.max(-2.2, Math.min(2.2, context.velocity || 0));
+    var started = performance.now(), previous = started;
+    var target = context.target;
+    var rows = context.rows;
+    var min = rows[0].top, max = rows[rows.length - 1].top + rows[rows.length - 1].height;
+    function frame(now) {
+      if (cueMotion !== context) return;
+      var dt = Math.min(40, now - previous);
+      previous = now;
+      var proposed = target - velocity * dt;
+      target = Math.max(min, Math.min(max, proposed));
+      cueSeekAtHeight(target);
+      velocity *= Math.exp(-dt / 160);
+      if (now - started > 700 || Math.abs(velocity) < .035 || target !== proposed) finishCueMotion();
+      else cueMotionFrame = requestAnimationFrame(frame);
+    }
+    cueMotionFrame = requestAnimationFrame(frame);
+  }
+
   stageEl.addEventListener("contextmenu", function (event) { event.preventDefault(); });
   stageEl.addEventListener("touchstart", function (event) {
-    if (event.touches.length !== 1) { finishCueTouch(true); return; }
+    // A second finger/new sequence must end the previous gesture, even if its end was lost.
+    finishCueTouch(true);
+    if (event.touches.length !== 1) return;
     var touch = event.touches[0];
-    cueTouch = { x: touch.clientX, y: touch.clientY, dx: 0, dy: 0, scrubbing: false };
-    clearCueHold();
-    // Full mode scrolls normally; holding a sentence enters continuous seeking.
-    if (!state.isFullLyricsMode || !state.lyrics.length) return;
+    cueTouch = { x: touch.clientX, y: touch.clientY, dx: 0, dy: 0, scrubbing: false,
+      lastY: touch.clientY, lastTime: performance.now(), velocity: 0 };
+    if (!state.lyrics.length) return;
     var line = event.target.closest ? event.target.closest(".line") : null;
-    if (line) cueHoldTimer = setTimeout(function () { beginCueTouch(Number(line.dataset.index)); }, 450);
+    if (state.isFullLyricsMode && !line) return;
+    cueHoldTimer = setTimeout(function () {
+      beginCueTouch(state.isFullLyricsMode ? Number(line.dataset.index) : clampedActiveIndex(), true);
+    }, 450);
   }, { passive: true });
 
   stageEl.addEventListener("touchmove", function (event) {
     if (!cueTouch) return;
     if (event.touches.length !== 1) { finishCueTouch(true); return; }
+    var y = event.touches[0].clientY, now = performance.now();
+    var dt = Math.max(1, now - cueTouch.lastTime);
+    cueTouch.velocity = (y - cueTouch.lastY) / dt;
+    cueTouch.lastY = y; cueTouch.lastTime = now;
     cueTouch.dx = event.touches[0].clientX - cueTouch.x;
-    cueTouch.dy = event.touches[0].clientY - cueTouch.y;
-    if (!cueTouch.scrubbing && !state.isFullLyricsMode && Math.abs(cueTouch.dy) > 8 && Math.abs(cueTouch.dy) > Math.abs(cueTouch.dx) * 1.25) beginCueTouch(clampedActiveIndex());
+    cueTouch.dy = y - cueTouch.y;
+    if (!cueTouch.scrubbing && !state.isFullLyricsMode && Math.abs(cueTouch.dy) > 8 && Math.abs(cueTouch.dy) > Math.abs(cueTouch.dx) * 1.25) beginCueTouch(clampedActiveIndex(), false);
     if (cueTouch.scrubbing) {
       event.preventDefault();
-      if (state.isFullLyricsMode) getScrollContainer().scrollTop = cueTouch.scrollTop - cueTouch.dy;
-      cueSeekAtHeight(cueTouch.anchorOffset - cueTouch.dy);
+      var distance = cueTouch.dy * (cueTouch.fine && !state.isFullLyricsMode ? .35 : 1);
+      if (state.isFullLyricsMode) getScrollContainer().scrollTop = cueTouch.scrollTop - distance;
+      cueSeekAtHeight(cueTouch.anchorOffset - distance);
     } else {
       if (Math.abs(cueTouch.dx) > 10 || Math.abs(cueTouch.dy) > 10) clearCueHold();
       if (Math.abs(cueTouch.dx) > 16 && Math.abs(cueTouch.dx) > Math.abs(cueTouch.dy) * 1.5) event.preventDefault();
@@ -1218,24 +1283,26 @@
 
   function finishCueTouch(cancelled) {
     clearCueHold();
-    if (!cueTouch) return;
-    if (cueTouch.scrubbing) {
-      suppressClickUntil = Date.now() + 1000;
-      stageEl.classList.remove("cue-scrubbing");
-      cueGuide.hidden = true;
-      cueTouch.scrubbing = false;
-      cueBridge("endScrub");
-      if (state.isFullLyricsMode) onUserScrollInteraction();
-      else userScrolling = false;
-    } else if (!cancelled && Math.abs(cueTouch.dx) > 70 && Math.abs(cueTouch.dx) > Math.abs(cueTouch.dy) * 1.5) {
-      suppressClickUntil = Date.now() + 1000;
-      cueBridge(cueTouch.dx < 0 ? "openLibrary" : "openSearch");
-    } else if (Math.abs(cueTouch.dx) > 10 || Math.abs(cueTouch.dy) > 10) suppressClickUntil = Date.now() + 500;
+    finishCueMotion();
+    if (!cueTouch) {
+      if (cancelled) { stageEl.classList.remove("cue-scrubbing", "cue-dragging"); cueGuide.hidden = true; }
+      return;
+    }
+    var context = cueTouch;
     cueTouch = null;
+    if (context.scrubbing) {
+      suppressClickUntil = Date.now() + 350;
+      if (!cancelled && !context.fine && performance.now() - context.lastTime < 100 && Math.abs(context.velocity) > .08) startCueMotion(context);
+      else completeCueGesture();
+    } else if (!cancelled && Math.abs(context.dx) > 70 && Math.abs(context.dx) > Math.abs(context.dy) * 1.5) {
+      suppressClickUntil = Date.now() + 350;
+      cueBridge(context.dx < 0 ? "openLibrary" : "openSearch");
+    } else if (Math.abs(context.dx) > 10 || Math.abs(context.dy) > 10) suppressClickUntil = Date.now() + 350;
   }
   stageEl.addEventListener("touchend", function () { finishCueTouch(false); }, { passive: true });
   stageEl.addEventListener("touchcancel", function () { finishCueTouch(true); }, { passive: true });
   window.addEventListener("blur", function () { finishCueTouch(true); });
+  document.addEventListener("visibilitychange", function () { if (document.hidden) finishCueTouch(true); });
 
   stageEl.addEventListener("click", function (event) {
     if (Date.now() < suppressClickUntil || !state.lyrics.length) return;
@@ -1282,6 +1349,8 @@
   function toggleFullLyricsMode() {
     finishCueTouch(true);
     state.isFullLyricsMode = !state.isFullLyricsMode;
+    stageEl.scrollTop = 0;
+    getViewport().scrollTop = 0;
     prevActiveIndex = -1;
     if (state.isFullLyricsMode) {
       userScrolling = false; // Reset scroll-pause state on enter
@@ -1290,7 +1359,9 @@
       getScrollContainer().scrollTop = 0;
       renderFull();
       // Instantly jump to active line position (no smooth scroll from top)
+      var entryGeneration = layoutGeneration;
       requestAnimationFrame(function () {
+        if (!state.isFullLyricsMode || entryGeneration !== layoutGeneration) return;
         var lines = lyricsEl.querySelectorAll(".line");
         if (lines[state.activeIndex]) {
           getScrollContainer().scrollTop = lines[state.activeIndex].offsetTop - window.innerHeight * 0.05;

@@ -2,6 +2,7 @@ package com.lyricsplus.android.lyrics
 
 import com.lyricsplus.android.data.LyricsLine
 import com.lyricsplus.android.data.NowPlaying
+import com.lyricsplus.android.data.SongSearchMatch
 import com.lyricsplus.android.data.LyricsSearchResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -100,7 +101,7 @@ class QQMusicClient {
         return unescaped.replace("__NEWLINE_PLACEHOLDER__", "\n")
     }
 
-    suspend fun searchSongs(query: String): List<NowPlaying> = withContext(Dispatchers.IO) {
+    suspend fun searchSongs(query: String): List<SongSearchMatch> = withContext(Dispatchers.IO) {
         val url = QQ_MUSIC_SEARCH_API.toHttpUrl().newBuilder()
             .addQueryParameter("key", query).addQueryParameter("format", "json")
             .addQueryParameter("g_tk", "5381").addQueryParameter("uin", "0").build()
@@ -110,9 +111,10 @@ class QQMusicClient {
         check(json.optInt("code", -1) == 0) { "QQ 音乐搜索暂不可用" }
         val songs = json.optJSONObject("data")?.optJSONObject("song")?.optJSONArray("itemlist")
             ?: return@withContext emptyList()
-        (0 until songs.length()).map { songs.getJSONObject(it) }.map {
-            NowPlaying(track = it.optString("name"), artist = it.optString("singer").replace("/", " "))
-        }.filter { it.track.isNotBlank() }
+        (0 until songs.length()).map { songs.getJSONObject(it) }.mapIndexed { rank, song ->
+            SongSearchMatch(NowPlaying(track = song.optString("name"), artist = song.optString("singer").replace("/", " ")),
+                listOf("QQ音乐"), sourceRanks = mapOf("QQ音乐" to rank))
+        }.filter { it.track.track.isNotBlank() }
     }
 
     private fun searchSongMid(track: NowPlaying): QQMusicSearchResult? {

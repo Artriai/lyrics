@@ -50,7 +50,6 @@ fun LyricsLibraryPage(state: LyricsUiState, viewModel: MainViewModel, modifier: 
     val searching = state.libraryPage == 2
     var favoritesOnly by rememberSaveable { mutableStateOf(false) }
     var filter by rememberSaveable { mutableStateOf("") }
-    var removeTarget by remember { mutableStateOf<LibrarySong?>(null) }
     val keyboard = LocalSoftwareKeyboardController.current
     BackHandler { keyboard?.hide(); viewModel.backFromLibrary() }
 
@@ -94,7 +93,10 @@ fun LyricsLibraryPage(state: LyricsUiState, viewModel: MainViewModel, modifier: 
                     }
                 }
             )
-            Spacer(Modifier.height(16.dp))
+            Row(Modifier.padding(top = 16.dp, bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                LibraryFilter("热门", state.searchPopular) { viewModel.setSearchPopular(true) }
+                LibraryFilter("匹配", !state.searchPopular) { viewModel.setSearchPopular(false) }
+            }
             AnimatedVisibility(state.isSearching, enter = fadeIn(), exit = fadeOut()) {
                 Row(Modifier.padding(vertical = 16.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -152,7 +154,7 @@ fun LyricsLibraryPage(state: LyricsUiState, viewModel: MainViewModel, modifier: 
                 LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(bottom = 24.dp)) {
                     items(songs, key = { it.key }) { song ->
-                        SwipeSongRow(onDelete = { removeTarget = song }) {
+                        SwipeSongRow(onDelete = { viewModel.removeSong(song) }) {
                         SongRow(song.track, state.nowPlaying.libraryKey() == song.key,
                             onSelect = { keyboard?.hide(); viewModel.selectSong(song.track) },
                             trailing = {
@@ -167,13 +169,7 @@ fun LyricsLibraryPage(state: LyricsUiState, viewModel: MainViewModel, modifier: 
             }
         }
     }
-    removeTarget?.let { song ->
-        AlertDialog(onDismissRequest = { removeTarget = null }, containerColor = LibraryPanel,
-            title = { Text("删除这首歌词？", color = Color.White) },
-            text = { Text(song.track.track, color = LibraryMuted) },
-            confirmButton = { TextButton(onClick = { viewModel.removeSong(song); removeTarget = null }) { Text("删除", color = LibraryAccent) } },
-            dismissButton = { TextButton(onClick = { removeTarget = null }) { Text("取消", color = LibraryMuted) } })
-    }
+
     }
 }
 
