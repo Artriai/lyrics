@@ -95,6 +95,7 @@ class LyricsFlowTest {
             compose.waitUntil(10_000) { app.getSharedPreferences("lyrics_plus_prefs", 0).getLong("last_position", -1) == 8000L }
             compose.onNodeWithContentDescription("开始提词").assertIsDisplayed()
             assertEquals("2", webJs(scenario, "document.querySelector('.line.active').dataset.index").trim('\"'))
+            println("Full mode DOM: " + webJs(scenario, "JSON.stringify({scrollY:window.scrollY,innerHeight:innerHeight,clip:getComputedStyle(document.querySelector('.lyrics-viewport')).clipPath,padding:getComputedStyle(document.querySelector('.lyrics-viewport')).paddingTop,header:getComputedStyle(document.getElementById('stage')).getPropertyValue('--header-bottom')})"))
             screenshot(app, "06-full-lyrics")
             compose.onRoot().performTouchInput { swipeRight() }
             compose.onNodeWithText("搜索歌词").assertIsDisplayed()
@@ -151,6 +152,18 @@ class LyricsFlowTest {
         Thread.sleep(700) // Allow WebView painting and the existing fade/scroll animations to settle.
         val screenshot = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
         assertNotNull(screenshot)
+        // Shared images survive Gradle's automatic uninstall of the test/target APKs.
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, "$name.png")
+            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/lyrics-ui")
+            put(MediaStore.Images.Media.IS_PENDING, 1)
+        }
+        val uri = app.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)!!
+        app.contentResolver.openOutputStream(uri)!!.use { screenshot.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        values.clear()
+        values.put(MediaStore.Images.Media.IS_PENDING, 0)
+        app.contentResolver.update(uri, values, null, null)
         if (name == "03-lyrics") {
             // Check the actual WebView pixels, not just the Compose title/control layer.
             var brightPixels = 0
@@ -182,17 +195,5 @@ class LyricsFlowTest {
             }
             assertTrue("Permanent native controls must be painted above the WebView in both modes", green > 20)
         }
-        // Shared images survive Gradle's automatic uninstall of the test/target APKs.
-        val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, "$name.png")
-            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/lyrics-ui")
-            put(MediaStore.Images.Media.IS_PENDING, 1)
-        }
-        val uri = app.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)!!
-        app.contentResolver.openOutputStream(uri)!!.use { screenshot.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        values.clear()
-        values.put(MediaStore.Images.Media.IS_PENDING, 0)
-        app.contentResolver.update(uri, values, null, null)
     }
 }
