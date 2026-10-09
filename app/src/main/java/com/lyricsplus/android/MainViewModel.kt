@@ -305,7 +305,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val release = withContext(Dispatchers.IO) {
                 runCatching {
                     val request = okhttp3.Request.Builder()
-                        .url("https://api.github.com/repos/Artriai/lyrics-plus-android/releases?per_page=100")
+                        .url("https://api.github.com/repos/Artriai/lyrics/releases?per_page=100")
                         .header("User-Agent", "lyrics-android").build()
                     com.lyricsplus.android.lyrics.HttpClient.okHttpClient.newCall(request).execute().use { response ->
                         check(response.isSuccessful)
