@@ -134,10 +134,7 @@ jobs:
           target: google_apis
           profile: pixel_2
           disable-animations: true
-          script: |
-            ./gradlew connectedDebugAndroidTest
-            mkdir -p ui-screenshots
-            adb pull /sdcard/Pictures/lyrics-ui ui-screenshots
+          script: bash scripts/check-android-ui.sh
       - name: Upload UI screenshots and test results
         if: always()
         uses: actions/upload-artifact@v4
