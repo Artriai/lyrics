@@ -184,6 +184,32 @@ class LyricsFlowTest {
             lateinit var vm: MainViewModel
             scenario.onActivity { vm = ViewModelProvider(it)[MainViewModel::class.java] }
             compose.waitUntil(10_000) { !vm.uiState.value.isInitializing }
+            val eva = SongSearchMatch(NowPlaying(track = "残酷な天使のテーゼ", artist = "高橋洋子"),
+                listOf("网易云音乐"), 100, mapOf("网易云音乐" to 0), aliases = listOf("残酷天使的行动纲领"))
+            val evaMatches = listOf(
+                SongSearchMatch(NowPlaying(track = "残酷天使的行动纲领（粤语版）", artist = "翻唱歌手"), listOf("网易云音乐"), 25),
+                SongSearchMatch(NowPlaying(track = "天使之翼", artist = "Other"), listOf("QQ音乐"), 100), eva)
+            scenario.onActivity {
+                vm.updateSearchQuery("残酷天使")
+                MainViewModel::class.java.getDeclaredField("searchMatches").apply { isAccessible = true }.set(vm, evaMatches)
+                MainViewModel::class.java.getDeclaredField("searchedQuery").apply { isAccessible = true }.set(vm, "残酷天使")
+                vm.setSearchPopular(true)
+                vm.openSearch()
+            }
+            compose.onNodeWithText(eva.track.track).assertIsDisplayed()
+            compose.onAllNodesWithText("天使之翼").assertCountEquals(0)
+            assertEquals(eva.track, vm.uiState.value.searchResults.first().track)
+            compose.onNodeWithText("匹配").performClick()
+            assertEquals(eva.track, vm.uiState.value.searchResults.first().track)
+            screenshot(app, "10-translated-title-search")
+            scenario.onActivity {
+                vm.updateSearchQuery("完全无关查询")
+                MainViewModel::class.java.getDeclaredField("searchMatches").apply { isAccessible = true }.set(vm, evaMatches)
+                MainViewModel::class.java.getDeclaredField("searchedQuery").apply { isAccessible = true }.set(vm, "完全无关查询")
+                vm.setSearchPopular(true)
+            }
+            compose.onNodeWithText("没有找到歌曲，试试歌名加歌手").assertIsDisplayed()
+            assertTrue(vm.uiState.value.searchResults.isEmpty())
             scenario.onActivity {
                 vm.updateSearchQuery("only my")
                 // Seed the provider's complete result pool; exercise the real UI and ViewModel offline.
