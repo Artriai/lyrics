@@ -10,11 +10,11 @@ private fun String.searchNormalized(): String = Normalizer.normalize(this, Norma
 fun sortSongSearchMatches(matches: List<SongSearchMatch>, query: String, popular: Boolean): List<SongSearchMatch> {
     val whole = query.searchNormalized()
     if (whole.isBlank()) return matches
-    val parts = query.searchParts()
     data class Ranked(val match: SongSearchMatch, val score: Int, val tier: Int, val heat: Double)
     val ranked = matches.map { match ->
         val fields = match.searchFields()
-        val score = searchScore(fields, query)
+        val parts = match.queryParts(query)
+        val score = searchScore(fields, query, parts)
         val tier = when {
             fields.any { it.contains(whole) } -> 3
             parts.isNotEmpty() && parts.all { part -> fields.any { it.contains(part) } } -> 2
@@ -33,6 +33,23 @@ fun sortSongSearchMatches(matches: List<SongSearchMatch>, query: String, popular
 private fun String.searchParts(): List<String> = trim().split(Regex("[\\s·/，,]+"))
     .map { it.searchNormalized() }.filter { it.isNotBlank() }
 
+private fun SongSearchMatch.queryParts(query: String): List<String> {
+    val parts = query.searchParts()
+    if (parts.size != 1) return parts
+    val whole = parts.single()
+    // Recover a missing separator using known artist names, including platform translations.
+    for (artist in (listOf(track.artist) + artistAliases).map { it.searchNormalized() }
+        .filter { it.length >= 2 }.distinct().sortedByDescending { it.length }) {
+        val title = when {
+            whole.startsWith(artist) -> whole.removePrefix(artist)
+            whole.endsWith(artist) -> whole.removeSuffix(artist)
+            else -> continue
+        }
+        if (title.isNotBlank()) return listOf(artist, title)
+    }
+    return parts
+}
+
 private fun SongSearchMatch.searchFields(): List<String> {
     val titles = (listOf(track.track) + aliases).map { it.searchNormalized() }.filter { it.isNotBlank() }.distinct()
     val artists = (listOf(track.artist) + artistAliases).map { it.searchNormalized() }.filter { it.isNotBlank() }.distinct()
@@ -48,12 +65,11 @@ fun songSearchQueries(query: String): List<String> {
 
 fun songSearchScore(track: NowPlaying, query: String): Int = songSearchScore(SongSearchMatch(track, emptyList()), query)
 
-fun songSearchScore(match: SongSearchMatch, query: String): Int = searchScore(match.searchFields(), query)
+fun songSearchScore(match: SongSearchMatch, query: String): Int = searchScore(match.searchFields(), query, match.queryParts(query))
 
-private fun searchScore(fields: List<String>, query: String): Int {
+private fun searchScore(fields: List<String>, query: String, parts: List<String>): Int {
     val whole = query.searchNormalized()
     if (whole.isBlank() || fields.isEmpty()) return 0
-    val parts = query.searchParts()
     var score = fields.maxOf { if (it == whole) 160 else if (it.contains(whole)) 110 else 0 }
     score += parts.sumOf { token ->
         fields.maxOf { field ->
