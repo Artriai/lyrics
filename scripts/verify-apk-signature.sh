@@ -10,8 +10,8 @@ if (( ${#signers[@]} == 0 )); then
 fi
 expected=$(keytool -exportcert -keystore app/debug.keystore -storepass android -alias androiddebugkey 2>/dev/null | sha256sum | awk '{print $1}')
 certificate_output=$("${signers[-1]}" verify --print-certs "$apk")
-# New build-tools label signers with an SDK range instead of "Signer #1".
-actual=$(printf '%s\n' "$certificate_output" | sed -n 's/^Signer.* certificate SHA-256 digest: //p' | tr '[:upper:]' '[:lower:]' | sort -u)
+# Signer labels vary by build-tools version (e.g. "Signer #1" or "V2 Signer").
+actual=$(printf '%s\n' "$certificate_output" | sed -n 's/^.*certificate SHA-256 digest: //p' | tr '[:upper:]' '[:lower:]' | sort -u)
 if [[ -z "$actual" ]]; then
   echo "Could not read APK signing certificate from apksigner output" >&2
   printf '%s\n' "$certificate_output" >&2
