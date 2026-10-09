@@ -12,6 +12,8 @@ import com.lyricsplus.android.analytics.AnonymousStats
 import com.lyricsplus.android.data.*
 import com.lyricsplus.android.lyrics.LyricsCacheDatabase
 import com.lyricsplus.android.lyrics.LyricsProvider
+import com.lyricsplus.android.lyrics.LyricsSourceSwitchResult
+import com.lyricsplus.android.lyrics.findNextLyricsSource
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import org.json.JSONArray
@@ -60,6 +62,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val uiState = _uiState.asStateFlow()
     private var timeline = CueTimeline()
     private var lyricsJob: Job? = null
+    private var lyricsRequestId = 0L
     private var searchJob: Job? = null
     private var searchMatches: List<SongSearchMatch> = emptyList()
     private var searchedQuery = ""
@@ -163,6 +166,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectSong(track: NowPlaying, restorePosition: Long = 0L) {
+        lyricsRequestId++
         lyricsJob?.cancel()
         timeline = CueTimeline()
         resumeAfterScrub = false
@@ -259,6 +263,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun removeSong(song: LibrarySong) {
         viewModelScope.launch {
             if (song.key == _uiState.value.nowPlaying.libraryKey()) {
+                lyricsRequestId++
                 lyricsJob?.cancel()
                 timeline = CueTimeline()
                 _uiState.update { it.copy(nowPlaying = NowPlaying(), lyrics = emptyList(), playback = PlaybackAnchor(), isLoadingLyrics = false) }
@@ -272,28 +277,48 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun switchLyricsSource() {
         val state = _uiState.value
         if (!state.nowPlaying.hasTrack || state.isLoadingLyrics) return
-        val sources = listOf("网易云音乐", "QQ音乐", "LRCLIB")
-        val nextSource = sources[(sources.indexOf(state.activeLyricsSource) + 1) % sources.size]
         lyricsJob?.cancel()
+        val requestId = ++lyricsRequestId
         lyricsJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoadingLyrics = true) }
-            val result = lyricsProvider.findSyncedLyricsForSource(state.nowPlaying, nextSource)
-            ensureActive()
-            result.fold(onSuccess = { resolved ->
-                if (resolved.lyrics.isEmpty() || resolved.lyrics.all { it.text.contains("纯音乐") }) {
-                    toast("这个歌词源没有可用歌词")
-                } else {
-                    _uiState.update { it.copy(lyrics = resolved.lyrics, activeLyricsSource = nextSource) }
-                    timeline = timeline.copy(durationMs = maxOf(state.nowPlaying.durationSeconds * 1000L, resolved.lyrics.maxOf { it.startTimeMs } + 8000L))
-                    withContext(Dispatchers.IO) {
-                        lyricsProvider.saveToCache(state.nowPlaying, resolved.lyrics, nextSource)
-                        libraryDb.saveLibrarySong(state.nowPlaying, nextSource)
+            try {
+                when (val result = findNextLyricsSource(state.activeLyricsSource) { source ->
+                    lyricsProvider.findSyncedLyricsForSource(state.nowPlaying, source)
+                }) {
+                    is LyricsSourceSwitchResult.Switched -> {
+                        ensureActive()
+                        val resolved = result.lyrics
+                        val now = SystemClock.elapsedRealtime()
+                        val position = timeline.positionAt(now)
+                        timeline = timeline.copy(durationMs = maxOf(
+                            state.nowPlaying.durationSeconds * 1000L,
+                            resolved.lyrics.maxOf { it.startTimeMs } + 8000L
+                        )).seek(position, now)
+                        _uiState.update { it.copy(lyrics = resolved.lyrics, activeLyricsSource = resolved.source) }
+                        publishClock()
+                        saveProgress()
+                        toast("已切换到 ${resolved.source}")
+                        // Saving must not turn a successful switch into a fetching failure.
+                        try {
+                            withContext(Dispatchers.IO) {
+                                lyricsProvider.saveToCache(state.nowPlaying, resolved.lyrics, resolved.source)
+                                libraryDb.saveLibrarySong(state.nowPlaying, resolved.source)
+                            }
+                            reloadLibrary()
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            toast("歌词已切换，离线保存失败")
+                        }
                     }
-                    reloadLibrary()
-                    publishClock()
+                    is LyricsSourceSwitchResult.Unavailable -> toast(
+                        if (result.networkFailure) "其他歌词源暂时不可用，已保留当前歌词"
+                        else "其他歌词源没有同步歌词，已保留当前歌词"
+                    )
                 }
-            }, onFailure = { toast("暂时无法从这个歌词源获取歌词") })
-            _uiState.update { it.copy(isLoadingLyrics = false) }
+            } finally {
+                if (lyricsRequestId == requestId) _uiState.update { it.copy(isLoadingLyrics = false) }
+            }
         }
     }
 

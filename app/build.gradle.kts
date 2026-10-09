@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -45,7 +47,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 1000 + (providers.gradleProperty("lyricsBuildNumber").orNull?.toIntOrNull() ?: 0)
-        versionName = "1.0.5"
+        versionName = "1.0.6"
         buildConfigField("long", "LYRICS_BUILD_NUMBER", "${providers.gradleProperty("lyricsBuildNumber").orNull?.toLongOrNull() ?: 0L}L")
         
         resConfigs("en", "zh", "zh-rCN", "zh-rTW", "zh-rHK")
@@ -135,4 +137,22 @@ dependencies {
 
     debugImplementation(composeBom)
     debugImplementation("androidx.compose.ui:ui-tooling")
+}
+
+// Keep the certificate used by existing installations. Never silently generate a replacement.
+val verifySharedSigningKey by tasks.registering {
+    val keyFile = layout.projectDirectory.file("debug.keystore")
+    inputs.file(keyFile)
+    doLast {
+        val file = keyFile.asFile
+        check(file.isFile) { "Missing shared signing key: app/debug.keystore. Do not generate a replacement." }
+        val digest = MessageDigest.getInstance("SHA-256").digest(file.readBytes())
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        check(digest == "861970d047b8117e6200b3267ba2c2675b59c58135575fbfaacd9d505239d8c5") {
+            "Shared signing key changed. Refusing to build an APK that cannot upgrade existing installations."
+        }
+    }
+}
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn(verifySharedSigningKey)
 }

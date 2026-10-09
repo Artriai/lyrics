@@ -10,7 +10,7 @@
         android:fillColor="#FF0C0E0D"
         android:pathData="M 112,16 H 400 A 96,96 0 0 1 496,112 V 400 A 96,96 0 0 1 400,496 H 112 A 96,96 0 0 1 16,400 V 112 A 96,96 0 0 1 112,16 Z" />
     
-    <!-- Smooth Bezier Curved Letter L with Lime-to-Green Gradient -->
+    <!-- Rounded L with coral-to-crimson gradient -->
     <path
         android:strokeWidth="64"
         android:strokeLineCap="round"
@@ -23,8 +23,8 @@
                 android:endX="256"
                 android:endY="352"
                 android:type="linear">
-                <item android:offset="0.0" android:color="#FFD3A5FF" />
-                <item android:offset="1.0" android:color="#FF8865E8" />
+                <item android:offset="0.0" android:color="#FFFF8B86" />
+                <item android:offset="1.0" android:color="#FFE64055" />
             </gradient>
         </aapt:attr>
     </path>

@@ -137,6 +137,9 @@ class LrclibClient {
             .build()
 
         return HttpClient.okHttpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful && response.code != 404) {
+                throw java.io.IOException("歌词服务请求失败 (${response.code})")
+            }
             HttpResponse(
                 code = response.code,
                 body = response.body?.string().orEmpty()

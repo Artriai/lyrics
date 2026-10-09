@@ -22,11 +22,9 @@ class NeteaseClient {
             val yrcString = lyricJson.optJSONObject("yrc")?.optString("lyric").orEmpty()
             val lrcString = lyricJson.optJSONObject("lrc")?.optString("lyric").orEmpty()
 
-            val synced = if (yrcString.isNotBlank()) {
-                parseNeteaseYrc(yrcString)
-            } else {
-                parseNeteaseLrc(lrcString)
-            }.ifEmpty { error("网易云音乐同步歌词为空") }
+            val synced = parseNeteaseYrc(yrcString)
+                .ifEmpty { parseNeteaseLrc(lrcString) }
+                .ifEmpty { error("网易云音乐同步歌词为空") }
 
             val translation = parseNeteaseLrc(lyricJson.optJSONObject("tlyric")?.optString("lyric").orEmpty())
 
@@ -59,44 +57,50 @@ class NeteaseClient {
     }.filter { it.isNotBlank() }.distinct()
 
     private fun searchSongId(track: NowPlaying): Pair<Long, Int>? {
-        val cleanTitle = cleanTitle(track.track)
-        val url = "https://music.163.com/api/cloudsearch/pc?csrf_token=&type=1&offset=0&limit=10&s=" +
-            "${cleanTitle} ${track.artist}".urlEncode()
-        val response = request(url)
-        if (response.code !in 200..299) return null
-
-        val songs = JSONObject(response.body)
-            .optJSONObject("result")
-            ?.optJSONArray("songs")
-            ?: return null
-
-        val normalizedTitle = normalizeForCompare(cleanTitle)
-        val normalizedArtist = normalizeForCompare(track.artist)
-        val normalizedAlbum = normalizeForCompare(track.album)
-
-        return (0 until songs.length())
-            .map { songs.getJSONObject(it) }
-            .map { song ->
-                val name = normalizeForCompare(song.optString("name"))
-                val album = normalizeForCompare(song.optJSONObject("al")?.optString("name") ?: song.optJSONObject("album")?.optString("name").orEmpty())
+        val title = cleanTitle(track.track)
+        val queries = listOf("$title ${track.artist}".trim(), title).filter { it.isNotBlank() }.distinct()
+        var networkFailure: java.io.IOException? = null
+        for (query in queries) {
+            val response = try {
+                request("https://music.163.com/api/cloudsearch/pc?csrf_token=&type=1&offset=0&limit=30&s=" + query.urlEncode())
+            } catch (failure: java.io.IOException) {
+                networkFailure = failure
+                continue
+            }
+            if (response.code !in 200..299) {
+                networkFailure = java.io.IOException("网易云音乐搜索失败 (${response.code})")
+                continue
+            }
+            val songs = JSONObject(response.body).optJSONObject("result")?.optJSONArray("songs") ?: continue
+            val normalizedTitle = normalizeForCompare(title)
+            val normalizedArtist = normalizeForCompare(track.artist)
+            val normalizedAlbum = normalizeForCompare(track.album)
+            val best = (0 until songs.length()).map { songs.getJSONObject(it) }.mapNotNull { song ->
+                val name = normalizeForCompare(cleanTitle(song.optString("name")))
+                val album = normalizeForCompare((song.optJSONObject("al") ?: song.optJSONObject("album"))?.optString("name").orEmpty())
                 val artists = normalizeForCompare(song.artistNames())
                 val durationMs = song.optLong("dt", song.optLong("duration", 0L))
-                val expectedDurationMs = track.durationSeconds * 1000L
-                val durationDiff = if (expectedDurationMs > 0) abs(expectedDurationMs - durationMs) else Long.MAX_VALUE
-
-                var score = 0
-                if (name == normalizedTitle) score += 50
-                else if (normalizedTitle.isNotBlank() && (name.contains(normalizedTitle) || normalizedTitle.contains(name))) score += 20
-                if (artists.isNotBlank() && normalizedArtist.isNotBlank() && artists == normalizedArtist) score += 40
-                else if (artists.isNotBlank() && normalizedArtist.isNotBlank() && (artists.contains(normalizedArtist) || normalizedArtist.contains(artists))) score += 25
+                val durationDiff = if (track.durationSeconds > 0) abs(track.durationSeconds * 1000L - durationMs) else Long.MAX_VALUE
+                val titleScore = when {
+                    name.isBlank() || normalizedTitle.isBlank() -> 0
+                    name == normalizedTitle -> 50
+                    name.contains(normalizedTitle) || normalizedTitle.contains(name) -> 20
+                    else -> 0
+                }
+                if (titleScore == 0 || song.optLong("id") <= 0) return@mapNotNull null
+                var score = titleScore
+                if (artists.isNotBlank() && normalizedArtist.isNotBlank()) {
+                    if (artists == normalizedArtist) score += 40
+                    else if (artists.contains(normalizedArtist) || normalizedArtist.contains(artists)) score += 25
+                }
                 if (album.isNotBlank() && album == normalizedAlbum) score += 20
-                if (durationDiff < 3_000) score += 30
-                else if (durationDiff < 10_000) score += 10
-
+                if (durationDiff < 3_000) score += 30 else if (durationDiff < 10_000) score += 10
                 song.optLong("id") to score
-            }
-            .filter { it.first > 0 && it.second > 0 }
-            .maxByOrNull { it.second }
+            }.maxByOrNull { it.second }
+            if (best != null) return best
+        }
+        networkFailure?.let { throw it }
+        return null
     }
 
     private fun fetchLyrics(songId: Long): JSONObject? {
@@ -166,6 +170,9 @@ class NeteaseClient {
             .build()
 
         return HttpClient.okHttpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful && response.code != 404) {
+                throw java.io.IOException("歌词服务请求失败 (${response.code})")
+            }
             HttpResponse(
                 code = response.code,
                 body = response.body?.string().orEmpty()

@@ -19,6 +19,7 @@ object HttpClient {
         val builder = OkHttpClient.Builder()
             .connectTimeout(8, TimeUnit.SECONDS)
             .readTimeout(8, TimeUnit.SECONDS)
+            .callTimeout(12, TimeUnit.SECONDS)
 
         cacheDir?.let { dir ->
             runCatching {

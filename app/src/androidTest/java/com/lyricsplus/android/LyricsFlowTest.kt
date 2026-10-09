@@ -104,7 +104,12 @@ class LyricsFlowTest {
             compose.mainClock.autoAdvance = false
             compose.onRoot().performTouchInput { click(Offset(width * .5f, height * .8f)) }
             compose.mainClock.advanceTimeBy(120)
-            compose.onAllNodesWithText("★").assertCountEquals(1)
+            compose.onNodeWithContentDescription("3D点击特效").assert(
+                SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "立体图形：1")
+            )
+            compose.onAllNodesWithText("★").assertCountEquals(0)
+            compose.onAllNodesWithText("♥").assertCountEquals(0)
+            compose.onAllNodesWithText("👍").assertCountEquals(0)
             compose.onAllNodesWithText("独立歌词提词板", substring = true).assertCountEquals(0)
             compose.onAllNodesWithText("Made with love", substring = true).assertCountEquals(0)
             compose.onRoot().performTouchInput {

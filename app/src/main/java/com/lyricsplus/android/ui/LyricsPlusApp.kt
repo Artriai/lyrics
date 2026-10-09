@@ -259,7 +259,7 @@ private fun LyricsOverlay(
                     horizontalAlignment = Alignment.Start,
                     verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (state.nowPlaying.hasTrack && state.lyrics.isNotEmpty()) {
-                        MenuActionRow("切换歌词源 · ${state.activeLyricsSource}", "♫") { viewModel.switchLyricsSource() }
+                        MenuActionRow(if (state.isLoadingLyrics) "正在切换歌词源…" else "切换歌词源 · ${state.activeLyricsSource}", "♫") { viewModel.switchLyricsSource() }
                         MenuActionRow("重新取色", "◈") { viewModel.rotatePaletteColors() }
                     }
                     val readingLabel = when (state.readingMode) { 0 -> "无注音"; 1 -> "罗马音"; else -> "振假名" }
@@ -320,7 +320,7 @@ private fun LyricsHome(onSearch: () -> Unit, onLibrary: () -> Unit) {
     Column(Modifier.fillMaxSize().background(AppBackground).cuePageSwipe(onSearch, onLibrary)
         .statusBarsPadding().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(24.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(Modifier.size(32.dp).background(Brush.linearGradient(listOf(Color(0xFFD3A5FF), Color(0xFF8865E8))), RoundedCornerShape(9.dp)), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(32.dp).background(Brush.linearGradient(listOf(Color(0xFFFF8B86), Color(0xFFE64055))), RoundedCornerShape(9.dp)), contentAlignment = Alignment.Center) {
                 Text("L", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
             }
             Text("lyrics", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)

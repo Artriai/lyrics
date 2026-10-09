@@ -76,8 +76,8 @@ class QQMusicClient {
 
         val synced = LrcParser.parse(rawLyric)
             .ifEmpty { error("QQ 音乐新版歌词解析为空") }
-        val translation = LrcParser.parse(decodeField("trans")).filter(::isUsefulAuxiliaryLine)
-        val reading = LrcParser.parse(decodeField("roma"))
+        val translation = LrcParser.parse(runCatching { decodeField("trans") }.getOrDefault("")).filter(::isUsefulAuxiliaryLine)
+        val reading = LrcParser.parse(runCatching { decodeField("roma") }.getOrDefault(""))
 
         val mergedTranslation = mergeTranslation(synced, translation)
         val mergedReading = mergeReading(mergedTranslation, reading)
@@ -118,60 +118,51 @@ class QQMusicClient {
     }
 
     private fun searchSongMid(track: NowPlaying): QQMusicSearchResult? {
-        val query = "${track.track} ${track.artist}"
-
-        // client_search_cp now returns HTTP 500 with an empty body, so search
-        // goes through the smartbox suggestion endpoint instead. Its items
-        // carry mid/name/singer only (singer is a "/"-joined string, no
-        // album or duration fields), so scoring is title + artist only.
-        val url = QQ_MUSIC_SEARCH_API.toHttpUrl().newBuilder()
-            .addQueryParameter("key", query)
-            .addQueryParameter("format", "json")
-            .addQueryParameter("g_tk", "5381")
-            .addQueryParameter("uin", "0")
-            .build()
-        val response = requestGet(url.toString())
-        if (response.code !in 200..299) return null
-
-        val json = JSONObject(response.body)
-        if (json.optInt("code", -1) != 0) return null
-        val songs = json.optJSONObject("data")
-            ?.optJSONObject("song")
-            ?.optJSONArray("itemlist")
-            ?: return null
-
-        var bestMid: String? = null
-        var bestScore = -1
-
+        val queries = listOf("${track.track} ${track.artist}".trim(), track.track)
+            .filter { it.isNotBlank() }.distinct()
         val normalizedTitle = track.track.lowercase().replace("\\s+".toRegex(), "")
         val normalizedArtist = track.artist.lowercase().replace("\\s+".toRegex(), "")
-
-        for (i in 0 until songs.length()) {
-            val song = songs.getJSONObject(i)
-            val name = song.optString("name").lowercase().replace("\\s+".toRegex(), "")
-            // smartbox returns singers as a single "/"-joined string,
-            // e.g. "周杰伦/林俊杰"; contains-matching handles it directly.
-            val artistStr = song.optString("singer").lowercase().replace("\\s+".toRegex(), "")
-            val mid = song.optString("mid")
-            if (mid.isBlank()) continue
-
-            var titleScore = 0
-            if (name == normalizedTitle) titleScore = 50
-            else if (normalizedTitle.isNotBlank() && (name.contains(normalizedTitle) || normalizedTitle.contains(name))) titleScore = 20
-
-            var score = titleScore
-            if (normalizedArtist.isNotBlank() && (artistStr.contains(normalizedArtist) || normalizedArtist.contains(artistStr))) score += 40
-
-            // QQ already ranks smartbox suggestions by relevance, and earlier
-            // items win ties via the strict `>` below. Require a title match
-            // so a wrong song never blocks the NetEase/LRCLIB fallback chain.
-            if (score > bestScore && titleScore > 0) {
-                bestScore = score
-                bestMid = mid
+        var networkFailure: java.io.IOException? = null
+        for (query in queries) {
+            val url = QQ_MUSIC_SEARCH_API.toHttpUrl().newBuilder()
+                .addQueryParameter("key", query).addQueryParameter("format", "json")
+                .addQueryParameter("g_tk", "5381").addQueryParameter("uin", "0").build()
+            val response = try { requestGet(url.toString()) } catch (failure: java.io.IOException) {
+                networkFailure = failure
+                continue
             }
+            if (response.code !in 200..299) {
+                networkFailure = java.io.IOException("QQ 音乐搜索失败 (${response.code})")
+                continue
+            }
+            val json = JSONObject(response.body)
+            if (json.optInt("code", -1) != 0) {
+                networkFailure = java.io.IOException("QQ 音乐搜索接口返回错误")
+                continue
+            }
+            val songs = json.optJSONObject("data")?.optJSONObject("song")?.optJSONArray("itemlist") ?: continue
+            var best: QQMusicSearchResult? = null
+            for (i in 0 until songs.length()) {
+                val song = songs.getJSONObject(i)
+                val mid = song.optString("mid")
+                val name = song.optString("name").lowercase().replace("\\s+".toRegex(), "")
+                val artist = song.optString("singer").lowercase().replace("\\s+".toRegex(), "")
+                if (mid.isBlank() || name.isBlank() || normalizedTitle.isBlank()) continue
+                val titleScore = when {
+                    name == normalizedTitle -> 50
+                    name.contains(normalizedTitle) || normalizedTitle.contains(name) -> 20
+                    else -> 0
+                }
+                val artistMatch = normalizedArtist.isNotBlank() && artist.isNotBlank() &&
+                    (artist.contains(normalizedArtist) || normalizedArtist.contains(artist))
+                if (titleScore == 0 || (titleScore < 50 && !artistMatch)) continue
+                val score = titleScore + if (artistMatch) 40 else 0
+                if (best == null || score > best.score) best = QQMusicSearchResult(mid, score)
+            }
+            if (best != null) return best
         }
-
-        return bestMid?.let { QQMusicSearchResult(it, bestScore) }
+        networkFailure?.let { throw it }
+        return null
     }
 
     private data class QQMusicSearchResult(val mid: String, val score: Int)
@@ -243,6 +234,9 @@ class QQMusicClient {
             .build()
 
         return HttpClient.okHttpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful && response.code != 404) {
+                throw java.io.IOException("歌词服务请求失败 (${response.code})")
+            }
             HttpResponse(
                 code = response.code,
                 body = response.body?.string().orEmpty()
@@ -266,6 +260,9 @@ class QQMusicClient {
             .build()
 
         return HttpClient.okHttpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful && response.code != 404) {
+                throw java.io.IOException("歌词服务请求失败 (${response.code})")
+            }
             HttpResponse(
                 code = response.code,
                 body = response.body?.string().orEmpty()

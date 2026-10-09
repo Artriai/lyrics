@@ -42,6 +42,7 @@ class LyricsProvider(
 
     fun saveToCache(track: NowPlaying, lyrics: List<LyricsLine>, source: String) {
         val trackKey = listOf(track.track, track.artist, track.album, track.durationSeconds).joinToString("|")
+        inMemoryCache["$trackKey|$source"] = CachedLyricsResult(lyrics, source)
         cacheDb.saveLyrics(trackKey, lyrics, source)
     }
 
@@ -87,7 +88,9 @@ class LyricsProvider(
                     cached.lyrics
                 }
                 // Return cached version with perfect score to avoid background override
-                return@runCatching CachedLyricsResult(finalLyrics, cached.source, score = 140)
+                val restored = CachedLyricsResult(finalLyrics, cached.source, score = 140)
+                inMemoryCache["$trackKey|${cached.source}"] = restored
+                return@runCatching restored
             }
 
             // Clear in-memory cache for this track key on starting fresh
