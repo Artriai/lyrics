@@ -17,7 +17,12 @@ import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import java.io.File
+import android.webkit.WebView
+import android.view.View
+import android.view.ViewGroup
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 @RunWith(AndroidJUnit4::class)
 class LyricsFlowTest {
@@ -39,8 +44,10 @@ class LyricsFlowTest {
 
         var scenario = ActivityScenario.launch(MainActivity::class.java)
         try {
-            compose.waitUntil(10_000) { compose.onAllNodesWithText("歌词列表").fetchSemanticsNodes().isNotEmpty() }
-            compose.onNodeWithText("歌词列表").performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("搜索歌词").fetchSemanticsNodes().isNotEmpty() }
+            screenshot(app, "00-home")
+            compose.onRoot().performTouchInput { swipeLeft() }
+            compose.onNodeWithText("歌词列表").assertIsDisplayed()
             compose.onNodeWithText(track.track).assertIsDisplayed()
             screenshot(app, "01-library")
             compose.onNodeWithContentDescription("收藏 ${track.track}").performClick()
@@ -55,18 +62,39 @@ class LyricsFlowTest {
             compose.onNodeWithText("取消").performClick()
             compose.onNodeWithText(track.track).assertIsDisplayed()
 
-            compose.onNodeWithText("搜索并添加歌词").performClick()
+            compose.onNodeWithText("提词 ›").performClick()
+            compose.onNodeWithText("搜索歌词").performClick()
             compose.onNodeWithText("搜索歌词").assertIsDisplayed()
             compose.onNode(hasSetTextAction()).performTextInput("周杰伦")
             compose.onNodeWithText("周杰伦").assertIsDisplayed()
             screenshot(app, "02-search")
             compose.onNodeWithText("返回").performClick()
+            compose.onNodeWithText("让歌词跟着你").assertIsDisplayed()
+            compose.onRoot().performTouchInput { swipeLeft() }
             compose.onNodeWithText(track.track).performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("开始提词").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithContentDescription("开始提词").performClick()
             compose.onNodeWithContentDescription("暂停提词").assertIsDisplayed().performClick()
             compose.onNodeWithContentDescription("开始提词").assertIsDisplayed()
             screenshot(app, "03-lyrics")
+            compose.onNodeWithContentDescription("取消收藏当前歌曲").assertIsDisplayed()
+            compose.onNodeWithContentDescription("设置").assertIsDisplayed().performClick()
+            compose.onAllNodesWithText("从头提词").assertCountEquals(0)
+            compose.onAllNodesWithText("歌词提前").assertCountEquals(0)
+            compose.onAllNodesWithText("关于项目").assertCountEquals(0)
+            screenshot(app, "05-settings")
+            compose.onNodeWithText("全部歌词").performClick()
+            compose.onNodeWithContentDescription("关闭设置").performClick()
+            compose.waitUntil(10_000) { webJs(scenario, "document.getElementById('stage').classList.contains('full-lyrics-mode')") == "true" }
+            webJs(scenario, "document.querySelector('.line[data-index=\"2\"]').click()")
+            compose.waitUntil(10_000) { app.getSharedPreferences("lyrics_plus_prefs", 0).getLong("last_position", -1) == 8000L }
+            compose.onNodeWithContentDescription("开始提词").assertIsDisplayed()
+            assertEquals("2", webJs(scenario, "document.querySelector('.line.active').dataset.index").trim('\"'))
+            screenshot(app, "06-full-lyrics")
+            compose.onRoot().performTouchInput { swipeRight() }
+            compose.onNodeWithText("搜索歌词").assertIsDisplayed()
+            compose.onNodeWithText("返回").performClick()
+            compose.onNodeWithText(track.track).assertIsDisplayed()
 
             // Reopen to verify saved lyrics, favorite and selected song survive activity recreation.
             scenario.close()
@@ -76,6 +104,21 @@ class LyricsFlowTest {
             assertTrue(LyricsCacheDatabase(app).librarySongs().single().favorite)
             assertEquals(3, LyricsCacheDatabase(app).getLyrics(track.libraryKey())!!.lyrics.size)
         } finally { scenario.close(); db.close() }
+    }
+
+    private fun webJs(scenario: ActivityScenario<MainActivity>, script: String): String {
+        val result = AtomicReference<String>()
+        val latch = CountDownLatch(1)
+        scenario.onActivity { activity ->
+            fun find(view: View): WebView? {
+                if (view is WebView) return view
+                if (view is ViewGroup) for (i in 0 until view.childCount) find(view.getChildAt(i))?.let { return it }
+                return null
+            }
+            find(activity.findViewById(android.R.id.content))!!.evaluateJavascript(script) { result.set(it); latch.countDown() }
+        }
+        assertTrue(latch.await(5, TimeUnit.SECONDS))
+        return result.get()
     }
 
     private fun screenshot(app: android.app.Application, name: String) {

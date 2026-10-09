@@ -165,7 +165,7 @@
           // Transition from playing to paused: freeze visually at the extrapolated position
           var elapsed = performance.now() - playback.updatedAt;
           var extrapolated = playback.positionMs + elapsed;
-          if (Math.abs(extrapolated - targetPos) < 1500) {
+          if (!forcePosition && Math.abs(extrapolated - targetPos) < 1500) {
             playback.positionMs = extrapolated;
           } else {
             playback.positionMs = targetPos;
@@ -662,7 +662,7 @@
     var lines = lyricsEl.querySelectorAll(".line");
     if (!lines.length) return;
 
-    var isSeek = prevActive === -1 || Math.abs(active - prevActive) > 3;
+    var isSeek = prevActive === -1 || Math.abs(active - prevActive) > 3 || (cueTouch && cueTouch.scrubbing);
     var totalLines = lines.length;
 
     // Narrow the iteration range: only update lines whose visual state actually changed
@@ -988,7 +988,8 @@
     setPlaybackState: setPlaybackState,
     setReadingMode: setReadingMode,
     setRightAligned: setRightAligned,
-    setInAppFontScale: setInAppFontScale
+    setInAppFontScale: setInAppFontScale,
+    toggleMode: toggleFullLyricsMode
   };
 
   window.onerror = function (message, source, line) {
@@ -1004,7 +1005,7 @@
   var scrollResumeTimer = null;
 
   function onUserScrollInteraction() {
-    if (!state.isFullLyricsMode) return;
+    if (!state.isFullLyricsMode || (cueTouch && cueTouch.scrubbing)) return;
     userScrolling = true;
     // Reset the resume timer
     if (scrollResumeTimer !== null) {
@@ -1045,21 +1046,23 @@
     setPlaybackState: setPlaybackState,
     setReadingMode: setReadingMode,
     setRightAligned: setRightAligned,
-    setInAppFontScale: setInAppFontScale
+    setInAppFontScale: setInAppFontScale,
+    toggleMode: toggleFullLyricsMode
   };
 
   window.onerror = function (message, source, line) {
     report("error:" + message + "@" + line);
   };
 
-  // Standalone cue controls. Tap still toggles the existing full/focused renderer.
+  // Spatial cue selection: move lyric rows into the fixed current-line position.
   var cueTouch = null;
   var cueHoldTimer = null;
   var suppressClickUntil = 0;
-  var cueBadge = document.createElement("div");
-  cueBadge.className = "cue-position-badge";
-  cueBadge.hidden = true;
-  document.body.appendChild(cueBadge);
+  var cueGuide = document.createElement("div");
+  cueGuide.className = "cue-guide";
+  cueGuide.hidden = true;
+  cueGuide.innerHTML = '<span class="cue-guide-time"></span>';
+  document.body.appendChild(cueGuide);
 
   function cueBridge(method, value) {
     if (window.AndroidLyrics && typeof window.AndroidLyrics[method] === "function") {
@@ -1073,37 +1076,71 @@
     cueHoldTimer = null;
   }
 
-  function cuePositionPreview(position) {
-    var duration = Math.max(Number((state.track || {}).durationSeconds || 0) * 1000,
-      state.lyrics.length ? Number(state.lyrics[state.lyrics.length - 1].startTimeMs) + 8000 : 0);
-    var clamped = Math.max(0, Math.min(duration, position));
-    // This is a seek, including jumps smaller than 1.5 seconds while paused.
-    setPlaybackState(clamped, false, true);
-    cueBridge("seekCue", clamped);
-    var seconds = Math.floor(clamped / 1000);
-    cueBadge.textContent = "↕ " + Math.floor(seconds / 60) + ":" + ("0" + (seconds % 60)).slice(-2) + " · 松手确认";
+  function cueSeekToIndex(index) {
+    var line = state.lyrics[index];
+    if (!line) return;
+    var position = Math.max(0, Number(line.startTimeMs) || 0);
+    setPlaybackState(position, false, true);
+    // Apply classes/position in the same frame, without transitional blur or stale rows.
+    if (!state.isFullLyricsMode) {
+      var activeLine = lyricsEl.querySelector('.line[data-index="' + index + '"]');
+      if (activeLine && !_isRightAligned) lyricsEl.style.transform = "translateY(-" + activeLine.offsetTop + "px)";
+    }
+    cueBridge("seekCue", position);
+    var seconds = Math.floor(position / 1000);
+    cueGuide.firstChild.textContent = Math.floor(seconds / 60) + ":" + ("0" + (seconds % 60)).slice(-2);
+  }
+
+  function nearestCueRow(target) {
+    var best = 0, distance = Infinity;
+    for (var i = 0; i < cueTouch.offsets.length; i++) {
+      var delta = Math.abs(cueTouch.offsets[i] - target);
+      if (delta < distance) { distance = delta; best = i; }
+    }
+    return best;
   }
 
   stageEl.addEventListener("contextmenu", function (event) { event.preventDefault(); });
   stageEl.addEventListener("touchstart", function (event) {
     if (event.touches.length !== 1) { finishCueTouch(true); return; }
     var touch = event.touches[0];
-    var position = playback.positionMs + (playback.isPlaying ? performance.now() - playback.updatedAt : 0);
-    cueTouch = { x: touch.clientX, y: touch.clientY, dx: 0, dy: 0, position: position, scrubbing: false };
+    cueTouch = { x: touch.clientX, y: touch.clientY, dx: 0, dy: 0, scrubbing: false };
     clearCueHold();
     if (!state.lyrics.length) return;
     var pressedLine = event.target.closest ? event.target.closest(".line") : null;
     if (!pressedLine) return;
+    var pressedIndex = Number(pressedLine.getAttribute("data-index"));
     cueHoldTimer = setTimeout(function () {
       if (!cueTouch) return;
       cueTouch.scrubbing = true;
       suppressClickUntil = Date.now() + 1000;
-      cueTouch.position = playback.positionMs + (playback.isPlaying ? performance.now() - playback.updatedAt : 0);
-      // Keep the original time on hold; upward drag advances, downward drag rewinds.
+      var lines = lyricsEl.querySelectorAll(".line");
+      var initialIndex = state.isFullLyricsMode ? pressedIndex : clampedActiveIndex();
+      var rowStep = Math.max(120, lines[initialIndex].getBoundingClientRect().height + 32);
+      cueTouch.offsets = Array.prototype.map.call(lines, function (line, index) {
+        // Hidden landscape rows have offsetTop=0; give them a spatial row distance.
+        return _isRightAligned && !state.isFullLyricsMode ? index * rowStep : line.offsetTop;
+      });
+      cueTouch.anchorOffset = cueTouch.offsets[initialIndex];
+      cueTouch.scrollTop = getScrollContainer().scrollTop;
+      cueTouch.index = initialIndex;
+      var rect = lines[initialIndex].getBoundingClientRect();
+      cueGuide.style.top = Math.max(40, Math.min(window.innerHeight - 40, rect.top - 10)) + "px";
       cueBridge("beginScrub");
       stageEl.classList.add("cue-scrubbing");
-      cueBadge.hidden = false;
-      cuePositionPreview(cueTouch.position);
+      cueGuide.hidden = false;
+      userScrolling = true;
+      if (scrollResumeTimer !== null) clearTimeout(scrollResumeTimer);
+      scrollResumeTimer = null;
+      if (state.isFullLyricsMode) cueSeekToIndex(initialIndex);
+      else {
+        // Holding alone preserves the exact progress until a different row is selected.
+        var position = playback.positionMs + (playback.isPlaying ? performance.now() - playback.updatedAt : 0);
+        setPlaybackState(position, false, true);
+        cueBridge("seekCue", position);
+        var seconds = Math.floor(position / 1000);
+        cueGuide.firstChild.textContent = Math.floor(seconds / 60) + ":" + ("0" + seconds % 60).slice(-2);
+      }
     }, 450);
   }, { passive: true });
 
@@ -1114,12 +1151,15 @@
     cueTouch.dy = event.touches[0].clientY - cueTouch.y;
     if (cueTouch.scrubbing) {
       event.preventDefault();
-      cuePositionPreview(cueTouch.position - cueTouch.dy * 120);
+      if (state.isFullLyricsMode) getScrollContainer().scrollTop = cueTouch.scrollTop - cueTouch.dy;
+      var next = nearestCueRow(cueTouch.anchorOffset - cueTouch.dy);
+      if (next !== cueTouch.index) {
+        cueTouch.index = next;
+        cueSeekToIndex(next);
+      }
     } else {
       if (Math.abs(cueTouch.dx) > 10 || Math.abs(cueTouch.dy) > 10) clearCueHold();
-      if (Math.abs(cueTouch.dx) > 16 && Math.abs(cueTouch.dx) > Math.abs(cueTouch.dy) * 1.5) {
-        event.preventDefault();
-      }
+      if (Math.abs(cueTouch.dx) > 16 && Math.abs(cueTouch.dx) > Math.abs(cueTouch.dy) * 1.5) event.preventDefault();
     }
   }, { passive: false });
 
@@ -1130,13 +1170,13 @@
       suppressClickUntil = Date.now() + 1000;
       cueBridge("endScrub");
       stageEl.classList.remove("cue-scrubbing");
-      cueBadge.hidden = true;
-      userScrolling = false;
-      if (scrollResumeTimer !== null) clearTimeout(scrollResumeTimer);
-      scrollResumeTimer = null;
-    } else if (!cancelled && cueTouch.dx < -70 && Math.abs(cueTouch.dx) > Math.abs(cueTouch.dy) * 1.5) {
+      cueGuide.hidden = true;
+      cueTouch.scrubbing = false;
+      if (state.isFullLyricsMode) onUserScrollInteraction();
+      else userScrolling = false;
+    } else if (!cancelled && Math.abs(cueTouch.dx) > 70 && Math.abs(cueTouch.dx) > Math.abs(cueTouch.dy) * 1.5) {
       suppressClickUntil = Date.now() + 1000;
-      cueBridge("openLibrary");
+      cueBridge(cueTouch.dx < 0 ? "openLibrary" : "openSearch");
     } else if (Math.abs(cueTouch.dx) > 10 || Math.abs(cueTouch.dy) > 10) {
       suppressClickUntil = Date.now() + 500;
     }
@@ -1146,12 +1186,19 @@
   stageEl.addEventListener("touchcancel", function () { finishCueTouch(true); }, { passive: true });
   window.addEventListener("blur", function () { finishCueTouch(true); });
 
-  // Click handler to toggle mode
-  stageEl.addEventListener("click", function (e) {
+  stageEl.addEventListener("click", function (event) {
     if (Date.now() < suppressClickUntil) return;
-    if (state.lyrics.length > 0) {
-      toggleFullLyricsMode();
-    }
+    if (!state.lyrics.length) return;
+    var line = event.target.closest ? event.target.closest(".line") : null;
+    if (state.isFullLyricsMode && line) {
+      // Tapping a full-mode lyric seeks to that sentence while retaining play/pause.
+      var index = Number(line.getAttribute("data-index"));
+      userScrolling = true;
+      cueBridge("beginScrub");
+      cueSeekToIndex(index);
+      cueBridge("endScrub");
+      onUserScrollInteraction();
+    } else toggleFullLyricsMode();
   });
 
   // Re-calculate layout and scroll offsets on window resize (rotation / unfolding)

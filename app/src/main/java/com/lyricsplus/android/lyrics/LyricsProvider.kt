@@ -4,6 +4,8 @@ import android.content.Context
 import com.lyricsplus.android.data.LyricsLine
 import com.lyricsplus.android.data.NowPlaying
 import com.lyricsplus.android.data.LyricsSearchResult
+import com.lyricsplus.android.data.SongSearchMatch
+import com.lyricsplus.android.data.mergeSongSearchMatches
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
@@ -208,20 +210,19 @@ class LyricsProvider(
         }
     }
 
-    suspend fun searchSongs(query: String): Result<List<NowPlaying>> = withContext(Dispatchers.IO) {
+    suspend fun searchSongs(query: String): Result<List<SongSearchMatch>> = withContext(Dispatchers.IO) {
         val searches = listOf(
-            async { runCatching { neteaseClient.searchSongs(query) } },
-            async { runCatching { qqMusicClient.searchSongs(query) } },
-            async { runCatching { lrclibClient.searchSongs(query) } }
+            async { runCatching { neteaseClient.searchSongs(query).map { SongSearchMatch(it, listOf("网易云音乐")) } } },
+            async { runCatching { qqMusicClient.searchSongs(query).map { SongSearchMatch(it, listOf("QQ音乐")) } } },
+            async { runCatching { lrclibClient.searchSongs(query).map { SongSearchMatch(it, listOf("LRCLIB")) } } }
         ).map { it.await() }
         if (searches.all { it.isFailure }) {
             Result.failure(searches.first().exceptionOrNull() ?: java.io.IOException("搜索失败"))
         } else {
             // Each source already ranks matches; preserve rank and prefer exact title matches.
             val normalizedQuery = query.lowercase().filterNot { it.isWhitespace() }
-            Result.success(searches.flatMap { it.getOrDefault(emptyList()) }
-                .distinctBy { listOf(it.track.lowercase(), it.artist.lowercase(), it.album.lowercase()) }
-                .sortedByDescending { if (it.track.lowercase().filterNot { c -> c.isWhitespace() } == normalizedQuery) 1 else 0 }
+            Result.success(mergeSongSearchMatches(searches.flatMap { it.getOrDefault(emptyList()) })
+                .sortedByDescending { if (it.track.track.lowercase().filterNot { c -> c.isWhitespace() } == normalizedQuery) 1 else 0 }
                 .take(60))
         }
     }

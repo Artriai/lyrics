@@ -24,6 +24,7 @@ class MainActivity : ComponentActivity() {
         )
         webController = LyricsWebController(this)
         webController.onOpenLibrary = viewModel::openLibrary
+        webController.onOpenSearch = viewModel::openSearch
         webController.onBeginScrub = viewModel::beginScrub
         webController.onSeekCue = viewModel::seekCue
         webController.onEndScrub = viewModel::endScrub

@@ -25,7 +25,6 @@ data class LyricsUiState(
     val isLoadingLyrics: Boolean = false,
     val message: String = "选择一首歌，开始提词",
     val playbackSource: String = "独立提词",
-    val lyricsOffsetMs: Long = 0L,
     val readingMode: Int = 1,
     val keepScreenOn: Boolean = true,
     val activeLyricsSource: String = "未加载",
@@ -36,7 +35,7 @@ data class LyricsUiState(
     val autoCheckUpdatesEnabled: Boolean = true,
     val library: List<LibrarySong> = emptyList(),
     val searchQuery: String = "",
-    val searchResults: List<NowPlaying> = emptyList(),
+    val searchResults: List<SongSearchMatch> = emptyList(),
     val isSearching: Boolean = false,
     val searchMessage: String = "",
     val libraryPage: Int = 0, // 0 = lyrics, 1 = saved songs, 2 = search
@@ -91,7 +90,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun openLibrary() = _uiState.update { it.copy(libraryPage = 1) }
     fun openSearch() = _uiState.update { it.copy(libraryPage = 2) }
     fun backToLyrics() = _uiState.update { it.copy(libraryPage = 0) }
-    fun backFromLibrary() = _uiState.update { it.copy(libraryPage = if (it.libraryPage == 2) 1 else 0) }
+    fun backFromLibrary() = _uiState.update { it.copy(libraryPage = 0) }
 
     fun updateSearchQuery(query: String) {
         searchJob?.cancel()
@@ -121,7 +120,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val coloredTrack = track.withCuePalette()
         _uiState.update { it.copy(nowPlaying = coloredTrack, lyrics = emptyList(),
             playback = PlaybackAnchor(), isLoadingLyrics = true, isInitializing = false,
-            lyricsOffsetMs = 0, isScrubbing = false, libraryPage = 0, message = "正在加载歌词…") }
+            isScrubbing = false, libraryPage = 0, message = "正在加载歌词…") }
         lyricsJob = viewModelScope.launch {
             val result = lyricsProvider.findSyncedLyrics(track)
             ensureActive()
@@ -156,13 +155,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         saveProgress()
     }
 
-    fun restartCue() {
-        timeline = timeline.seek(0L, SystemClock.elapsedRealtime())
-        _uiState.update { it.copy(lyricsOffsetMs = 0L) }
-        publishClock()
-        saveProgress()
-    }
-
     fun skipToNext() {
         val songs = _uiState.value.library
         if (songs.isEmpty()) { openLibrary(); return }
@@ -179,7 +171,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun seekCue(positionMs: Long) {
-        timeline = timeline.seek(positionMs - _uiState.value.lyricsOffsetMs, SystemClock.elapsedRealtime())
+        timeline = timeline.seek(positionMs, SystemClock.elapsedRealtime())
         publishClock()
     }
 
@@ -253,10 +245,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }, onFailure = { toast("暂时无法从这个歌词源获取歌词") })
             _uiState.update { it.copy(isLoadingLyrics = false) }
         }
-    }
-
-    fun adjustOffset(deltaMs: Long) {
-        _uiState.update { it.copy(lyricsOffsetMs = (it.lyricsOffsetMs + deltaMs).coerceIn(-120_000L, 120_000L)) }
     }
 
     private fun toast(message: String) = Toast.makeText(getApplication(), message, Toast.LENGTH_SHORT).show()

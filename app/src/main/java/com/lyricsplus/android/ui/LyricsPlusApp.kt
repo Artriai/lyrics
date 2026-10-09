@@ -1,16 +1,8 @@
 package com.lyricsplus.android.ui
 
-import android.app.Activity
 import android.os.SystemClock
-import androidx.core.view.WindowCompat
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -21,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -30,23 +23,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -56,15 +42,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.text.style.TextOverflow
 import android.view.ViewGroup
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.viewinterop.AndroidView
 import com.lyricsplus.android.LyricsUiState
 import com.lyricsplus.android.MainViewModel
@@ -78,18 +64,15 @@ import androidx.compose.foundation.Image
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
-import com.lyricsplus.android.R
 import com.lyricsplus.android.data.libraryKey
 
 private val AppBackground = Color(0xFF101010)
 private val Accent = Color(0xFF4AD295)
 private val Panel = Color(0xFF181A19)
 private val Outline = Color(0x1FFFFFFF)
-private val TextMuted = Color(0x998D9490)
 
 @Composable
 fun LyricsPlusApp(
@@ -128,12 +111,7 @@ private fun LyricsOverlay(
             view.keepScreenOn = false
         }
     }
-    val uriHandler = LocalUriHandler.current
-    val context = LocalContext.current
-    val isRightAligned = isMultiPane
-    val prefs = remember(context) {
-        context.getSharedPreferences("lyrics_plus_prefs", android.content.Context.MODE_PRIVATE)
-    }
+        val isRightAligned = isMultiPane
 
     LaunchedEffect(webController.isReady, state.nowPlaying) {
         webController.pushTrack(state.nowPlaying)
@@ -144,21 +122,21 @@ private fun LyricsOverlay(
     }
 
     LaunchedEffect(webController.isReady, state.lyrics) {
-        webController.pushPlayback(state.playback.currentPositionMs() + state.lyricsOffsetMs, state.playback.isPlaying)
+        webController.pushPlayback(state.playback.currentPositionMs(), state.playback.isPlaying)
     }
 
     // Throttle playback pushes to WebView: the JS renderer extrapolates position
     // via performance.now(), so we only need periodic sync updates (~150ms minimum interval)
     // to avoid overwhelming the JS bridge and competing with the rendering tick loop.
     var lastPlaybackPushMs by remember { mutableStateOf(0L) }
-    LaunchedEffect(webController.isReady, state.playback, state.lyricsOffsetMs) {
+    LaunchedEffect(webController.isReady, state.playback) {
         val now = SystemClock.elapsedRealtime()
         val elapsed = now - lastPlaybackPushMs
         if (elapsed < 150L) {
             delay(150L - elapsed)
         }
         lastPlaybackPushMs = SystemClock.elapsedRealtime()
-        webController.pushPlayback(state.playback.currentPositionMs() + state.lyricsOffsetMs, state.playback.isPlaying)
+        webController.pushPlayback(state.playback.currentPositionMs(), state.playback.isPlaying)
     }
 
     LaunchedEffect(webController.isReady, state.readingMode) {
@@ -204,595 +182,156 @@ private fun LyricsOverlay(
     }
 
     var isExpanded by remember { mutableStateOf(false) }
-    var isButtonVisible by remember { mutableStateOf(false) }
-    var playbackButtonsShowTrigger by remember { mutableStateOf(0) }
     var headerHeightPx by remember { mutableStateOf(0) }
-    var showOverlay by remember { mutableStateOf(false) }
-    var showAboutPage by remember { mutableStateOf(false) }
-
-    LaunchedEffect(state.lyrics.isEmpty(), state.nowPlaying.track) {
-        if (state.lyrics.isEmpty()) {
-            showOverlay = false // Reset showOverlay immediately to prevent flashing stale states during cache lookup
-            delay(150) // Delay by 150ms to allow local SQLite/in-memory cache to load first
-            showOverlay = true
-        } else {
-            showOverlay = false
-        }
-    }
-
     LaunchedEffect(webController.isReady, isMultiPane, headerHeightPx) {
-        if (isMultiPane) {
-            webController.pushHeaderHeight(0)
-        } else {
-            webController.pushHeaderHeight(headerHeightPx)
-        }
+        webController.pushHeaderHeight(if (isMultiPane) 0 else headerHeightPx)
     }
+    BackHandler(enabled = isExpanded) { isExpanded = false }
 
-    LaunchedEffect(isButtonVisible, isExpanded) {
-        if (isButtonVisible && !isExpanded) {
-            delay(4000)
-            isButtonVisible = false
-        }
-    }
-
-    LaunchedEffect(isExpanded) {
-        if (!isExpanded) {
-            isButtonVisible = false
-        }
-    }
-
-    BackHandler(enabled = showAboutPage) {
-        showAboutPage = false
-    }
-
-    DisposableEffect(showAboutPage) {
-        val activity = view.context as? Activity
-        val controller = activity?.window?.let { window ->
-            WindowCompat.getInsetsController(window, view)
-        }
-        val previousLightStatusBars = controller?.isAppearanceLightStatusBars
-        val previousLightNavigationBars = controller?.isAppearanceLightNavigationBars
-
-        if (showAboutPage && controller != null) {
-            controller.isAppearanceLightStatusBars = false
-            controller.isAppearanceLightNavigationBars = false
-        }
-
-        onDispose {
-            if (showAboutPage && controller != null) {
-                previousLightStatusBars?.let { controller.isAppearanceLightStatusBars = it }
-                previousLightNavigationBars?.let { controller.isAppearanceLightNavigationBars = it }
-            }
-        }
-    }
-
-    LaunchedEffect(playbackButtonsShowTrigger) {
-        if (playbackButtonsShowTrigger > 0) {
-            delay(4000)
-            playbackButtonsShowTrigger = 0
-        }
-    }
-
-    LaunchedEffect(state.nowPlaying.track) {
-        if (state.nowPlaying.hasTrack) {
-            playbackButtonsShowTrigger++
-        }
-    }
-
-    Box(modifier = Modifier.fillMaxSize()) {
-        Box(modifier = Modifier.fillMaxSize().then(
+    Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().then(
             if (state.libraryPage != 0) Modifier.clearAndSetSemantics { } else Modifier
         )) {
-        // 1. Host WebView natively inside Compose container
-        AndroidView(
-            factory = {
-                val webView = webController.webView
-                (webView.parent as? ViewGroup)?.removeView(webView)
-                webView.layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
-                webView
-            },
-            modifier = Modifier.fillMaxSize()
-        )
-
-        val hasTrack = state.nowPlaying.hasTrack
-        val isInitializing = state.isInitializing
-        if (!isInitializing && (!hasTrack || (state.lyrics.isEmpty() && showOverlay))) {
-            EmptyOverlay(
-                state = state,
-                onOpenSearch = onOpenSearch,
-                onOpenLibrary = onOpenLibrary,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(AppBackground)
-                    .statusBarsPadding()
-                    .navigationBarsPadding()
-                    .padding(28.dp)
-            )
-        } else if (webController.debugMessage.startsWith("error:", ignoreCase = true)) {
-            DebugOverlay(
-                message = webController.debugMessage,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(AppBackground)
-                    .statusBarsPadding()
-                    .navigationBarsPadding()
-                    .padding(28.dp)
-            )
-        }
-
-        if (webController.debugMessage.startsWith("error:", ignoreCase = true)) {
-            DebugChip(
-                message = webController.debugMessage,
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .navigationBarsPadding()
-                    .padding(10.dp)
-            )
-        }
-
-        // PREMIUM TOP INTEGRATED INFO & CONTROLLER HEADER BAR / LEFT SPLIT BAR
-        if (state.nowPlaying.hasTrack && !webController.isFullLyricsMode) {
-            if (isMultiPane) {
-                // Split-Screen layout overlay
-                Row(
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    // Left Column: Album art + info as one centered visual group
-                    Column(
-                        modifier = Modifier
-                            .weight(0.45f)
-                            .fillMaxHeight()
-                            .statusBarsPadding()
-                            .navigationBarsPadding()
-                            .padding(horizontal = 24.dp, vertical = 16.dp),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        AlbumArtView(
-                            bitmap = state.nowPlaying.albumArt,
-                            startColorHex = state.nowPlaying.backgroundStart,
-                            endColorHex = state.nowPlaying.backgroundEnd,
-                            modifier = Modifier.size(150.dp)
-                        )
-
-                        Spacer(modifier = Modifier.height(20.dp))
-
-                        Text(
-                            text = state.nowPlaying.track,
-                            color = Color.White,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            lineHeight = 24.sp,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = state.nowPlaying.artist,
-                            color = Color(0xB3FFFFFF),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium,
-                            lineHeight = 18.sp,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        Spacer(modifier = Modifier.height(18.dp))
-
-                        // Playback controls row
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(20.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            PlayPauseButton(
-                                isPlaying = state.playback.isPlaying,
-                                onClick = { viewModel.togglePlayback() }
-                            )
-
-                            Box(
-                                modifier = Modifier
-                                    .height(20.dp)
-                                    .width(1.dp)
-                                    .background(Color(0x26FFFFFF))
-                            )
-
-                            SkipNextButton(
-                                onClick = { viewModel.skipToNext() }
-                            )
-                        }
-                    }
-
-                    // Right weight (WebView lyrics show and respond to touches underneath)
-                    Spacer(modifier = Modifier.weight(0.55f))
+            AndroidView(factory = {
+                webController.webView.apply {
+                    (parent as? ViewGroup)?.removeView(this)
+                    layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                 }
+            }, modifier = Modifier.fillMaxSize())
+
+            if (!state.nowPlaying.hasTrack) {
+                LyricsHome(onOpenSearch, onOpenLibrary)
             } else {
-                // Portrait Overlay Layout
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .statusBarsPadding()
-                        .fillMaxWidth()
-                        .clickable(
-                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                            indication = null
-                        ) {
-                            if (playbackButtonsShowTrigger > 0) {
-                                playbackButtonsShowTrigger = 0
-                            } else {
-                                playbackButtonsShowTrigger++
-                            }
+                if (state.lyrics.isEmpty()) {
+                    EmptyOverlay(state, onOpenSearch, onOpenLibrary,
+                        Modifier.fillMaxSize().background(AppBackground)
+                            .statusBarsPadding().navigationBarsPadding().padding(28.dp))
+                }
+                val currentSong = state.library.firstOrNull { it.key == state.nowPlaying.libraryKey() }
+                if (isMultiPane) {
+                    Row(Modifier.fillMaxSize()) {
+                        Column(Modifier.weight(.45f).fillMaxHeight().statusBarsPadding().navigationBarsPadding()
+                            .padding(24.dp), verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally) {
+                            AlbumArtView(state.nowPlaying.albumArt, state.nowPlaying.backgroundStart,
+                                state.nowPlaying.backgroundEnd, Modifier.size(150.dp))
+                            Spacer(Modifier.height(20.dp))
+                            TrackTitle(state, true)
+                            Spacer(Modifier.height(16.dp))
+                            CueControls(state, viewModel, currentSong)
                         }
+                        Spacer(Modifier.weight(.55f))
+                    }
+                } else {
+                    Column(Modifier.align(Alignment.TopCenter).fillMaxWidth().statusBarsPadding()
                         .padding(horizontal = 24.dp, vertical = 18.dp)
-                        .onGloballyPositioned { coordinates ->
-                            val h = coordinates.size.height
-                            if (h != headerHeightPx) {
-                                headerHeightPx = h
-                            }
-                        },
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            text = state.nowPlaying.track,
-                            color = Color.White,
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            lineHeight = 36.sp,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = state.nowPlaying.artist,
-                            color = Color(0xB3FFFFFF),
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Medium,
-                            lineHeight = 24.sp,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(20.dp))
-
-                    AnimatedVisibility(
-                        visible = playbackButtonsShowTrigger > 0 || !state.playback.isPlaying,
-                        enter = fadeIn(),
-                        exit = fadeOut()
-                    ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            PlayPauseButton(
-                                isPlaying = state.playback.isPlaying,
-                                onClick = {
-                                    playbackButtonsShowTrigger++
-                                    viewModel.togglePlayback()
-                                }
-                            )
-
-                            Box(
-                                modifier = Modifier
-                                    .height(20.dp)
-                                    .width(1.dp)
-                                    .background(Color(0x26FFFFFF))
-                            )
-
-                            SkipNextButton(
-                                onClick = {
-                                    playbackButtonsShowTrigger++
-                                    viewModel.skipToNext()
-                                }
-                            )
+                        .onGloballyPositioned { headerHeightPx = it.size.height }) {
+                        TrackTitle(state, false)
+                        Row(Modifier.fillMaxWidth().padding(top = 8.dp),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically) {
+                            CueControls(state, viewModel, currentSong)
                         }
                     }
                 }
             }
-        }
-
-        if (isExpanded) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clickable(
-                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                        indication = null
-                    ) {
-                        isExpanded = false
-                    }
-            )
-        }
-
-        // Invisible Touch Hotspot Box (Auto-show button when tapped)
-        Box(
-            modifier = Modifier
-                .size(80.dp)
-                .align(Alignment.BottomEnd)
-                .clickable(
-                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                    indication = null,
-                    enabled = !isExpanded
-                ) {
-                    isButtonVisible = true
-                }
-        )
-
-        val offsetSec = state.lyricsOffsetMs / 1000.0
-        val offsetText = if (state.lyricsOffsetMs > 0) "+${offsetSec}s" else if (state.lyricsOffsetMs < 0) "${offsetSec}s" else "0.0s"
-
-        // FLOATING CONTROLS MENU
-        AnimatedVisibility(
-            visible = isButtonVisible || isExpanded,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .navigationBarsPadding()
-                .padding(end = 24.dp, bottom = 24.dp)
-        ) {
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                AnimatedVisibility(
-                    visible = isExpanded,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
-                ) {
-                    if (isLandscape) {
-                        Box(
-                            modifier = Modifier
-                                .background(Color(0xEE161A18), RoundedCornerShape(16.dp))
-                                .border(1.dp, Color(0x26FFFFFF), RoundedCornerShape(16.dp))
-                                .padding(16.dp)
-                        ) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                verticalAlignment = Alignment.Bottom
-                            ) {
-                                Column(
-                                    horizontalAlignment = Alignment.End,
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    MenuActionRow(label = "歌词列表", emoji = "☰") {
-                                        isExpanded = false
-                                        viewModel.openLibrary()
-                                    }
-                                    val currentSong = state.library.firstOrNull { it.key == state.nowPlaying.libraryKey() }
-                                    if (currentSong != null) {
-                                        MenuActionRow(label = if (currentSong.favorite) "取消收藏" else "收藏歌词", emoji = if (currentSong.favorite) "★" else "☆") {
-                                            viewModel.toggleFavorite(currentSong)
-                                        }
-                                    }
-                                    MenuActionRow(label = "从头提词", emoji = "🔄") {
-                                        viewModel.restartCue()
-                                    }
-                                    MenuActionRow(label = "切换歌词源 [当前: ${state.activeLyricsSource}]", emoji = "🎵") {
-                                        viewModel.switchLyricsSource()
-                                    }
-                                    LyricsOffsetAdjustRow(
-                                        offsetText = offsetText,
-                                        onAdvance = { viewModel.adjustOffset(-500) },
-                                        onDelay = { viewModel.adjustOffset(500) },
-                                        onReset = { viewModel.adjustOffset(-state.lyricsOffsetMs) }
-                                    )
-                                    MenuActionRow(label = "重新取色", emoji = "🎨") {
-                                        viewModel.rotatePaletteColors()
-                                    }
-                                }
-
-                                Column(
-                                    horizontalAlignment = Alignment.End,
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    val readingModeLabel = when (state.readingMode) {
-                                        0 -> "注音模式: 无"
-                                        1 -> "注音模式: 罗马音"
-                                        else -> "注音模式: 振假名"
-                                    }
-                                    MenuActionRow(
-                                        label = readingModeLabel,
-                                        emoji = "🔤",
-                                        active = state.readingMode > 0
-                                    ) {
-                                        viewModel.cycleReadingMode()
-                                    }
-                                    MenuActionRow(
-                                        label = if (state.keepScreenOn) "屏幕常亮: 开启" else "屏幕常亮: 关闭",
-                                        emoji = "💡",
-                                        active = state.keepScreenOn
-                                    ) {
-                                        viewModel.toggleKeepScreenOn()
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        Column(
-                            horizontalAlignment = Alignment.End,
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            MenuActionRow(label = "歌词列表", emoji = "☰") {
-                                        isExpanded = false
-                                        viewModel.openLibrary()
-                                    }
-                                    val currentSong = state.library.firstOrNull { it.key == state.nowPlaying.libraryKey() }
-                                    if (currentSong != null) {
-                                        MenuActionRow(label = if (currentSong.favorite) "取消收藏" else "收藏歌词", emoji = if (currentSong.favorite) "★" else "☆") {
-                                            viewModel.toggleFavorite(currentSong)
-                                        }
-                                    }
-                                    MenuActionRow(label = "从头提词", emoji = "🔄") {
-                                viewModel.restartCue()
-                            }
-                            MenuActionRow(label = "切换歌词源 [当前: ${state.activeLyricsSource}]", emoji = "🎵") {
-                                viewModel.switchLyricsSource()
-                            }
-                            LyricsOffsetAdjustRow(
-                                offsetText = offsetText,
-                                onAdvance = { viewModel.adjustOffset(-500) },
-                                onDelay = { viewModel.adjustOffset(500) },
-                                onReset = { viewModel.adjustOffset(-state.lyricsOffsetMs) }
-                            )
-                            MenuActionRow(label = "重新取色", emoji = "🎨") {
-                                viewModel.rotatePaletteColors()
-                            }
-                             val readingModeLabel = when (state.readingMode) {
-                                 0 -> "注音模式: 无"
-                                 1 -> "注音模式: 罗马音"
-                                 else -> "注音模式: 振假名"
-                             }
-                             MenuActionRow(
-                                 label = readingModeLabel,
-                                 emoji = "🔤",
-                                 active = state.readingMode > 0
-                             ) {
-                                 viewModel.cycleReadingMode()
-                             }
-                            MenuActionRow(
-                                label = if (state.keepScreenOn) "屏幕常亮: 开启" else "屏幕常亮: 关闭",
-                                emoji = "💡",
-                                active = state.keepScreenOn
-                            ) {
-                                viewModel.toggleKeepScreenOn()
-                            }
-                            MenuActionRow(label = "关于项目", emoji = "ℹ") {
-                                isExpanded = false
-                                showAboutPage = true
-                            }
-                        }
-                    }
-                }
-
-                // Main Toggle FAB Button (Minimized presence ghost button)
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .background(if (isExpanded) Accent else Color(0x22FFFFFF), CircleShape)
-                        .clickable(
-                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                            indication = null
-                        ) { isExpanded = !isExpanded },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = if (isExpanded) "✕" else "⚙",
-                        color = if (isExpanded) Color.Black else Color(0x66FFFFFF),
-                        fontSize = if (isExpanded) 16.sp else 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+            if (webController.debugMessage.startsWith("error:", true)) {
+                DebugChip(webController.debugMessage, Modifier.align(Alignment.BottomStart)
+                    .navigationBarsPadding().padding(10.dp))
             }
-        }
-
-        // BOTTOM LEFT FONT SCALE BUTTONS (visible when settings panel is open)
-        AnimatedVisibility(
-            visible = isExpanded && !showAboutPage,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .navigationBarsPadding()
-                .padding(start = 24.dp, bottom = 24.dp)
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // Plus button
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .background(Color(0xFF2E3230), CircleShape)
-                        .border(1.dp, Color(0xFF454A47), CircleShape)
-                        .noRippleClickable {
-                            viewModel.adjustInAppFontScale(0.1f)
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "+",
-                        color = Color.White,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                // Value indicator
-                Box(
-                    modifier = Modifier
-                        .background(Color(0xFF161A18), RoundedCornerShape(8.dp))
-                        .border(1.dp, Color(0xFF2D3230), RoundedCornerShape(8.dp))
-                        .padding(horizontal = 8.dp, vertical = 6.dp)
-                ) {
-                    Text(
-                        text = "${(state.inAppFontScale * 100).toInt()}%",
-                        color = Color.White,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                // Minus button
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .background(Color(0xFF2E3230), CircleShape)
-                        .border(1.dp, Color(0xFF454A47), CircleShape)
-                        .noRippleClickable {
-                            viewModel.adjustInAppFontScale(-0.1f)
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "—",
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        }
-
-        if (showAboutPage) {
-            AboutProjectPage(
-                onCheckUpdates = { viewModel.checkForUpdates() },
-                onOpenProject = {
-                    uriHandler.openUri("https://github.com/Artriai/lyrics-plus-android")
-                },
-                onOpenFeedback = {
-                    uriHandler.openUri("https://www.coolapk.com/u/2733246")
-                },
-                anonymousStatsAvailable = state.anonymousStatsAvailable,
-                anonymousStatsEnabled = state.anonymousStatsEnabled,
-                onToggleAnonymousStats = {
+            if (isExpanded) {
+                Box(Modifier.fillMaxSize().noRippleClickable { isExpanded = false })
+                Column(Modifier.align(Alignment.BottomEnd).navigationBarsPadding()
+                    .padding(end = 24.dp, bottom = 80.dp)
+                    .heightIn(max = (configuration.screenHeightDp - 120).coerceAtLeast(160).dp)
+                    .background(Color(0xEE161A18), RoundedCornerShape(18.dp))
+                    .border(1.dp, Outline, RoundedCornerShape(18.dp))
+                    .padding(16.dp).verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (state.nowPlaying.hasTrack && state.lyrics.isNotEmpty()) {
+                        MenuActionRow("切换歌词源 · ${state.activeLyricsSource}", "🎵") { viewModel.switchLyricsSource() }
+                        MenuActionRow(if (webController.isFullLyricsMode) "集中提词" else "全部歌词", "≡") { webController.toggleLyricsMode() }
+                        MenuActionRow("重新取色", "🎨") { viewModel.rotatePaletteColors() }
+                    }
+                    val readingLabel = when (state.readingMode) { 0 -> "无注音"; 1 -> "罗马音"; else -> "振假名" }
+                    MenuActionRow("注音 · $readingLabel", "abc", state.readingMode > 0) { viewModel.cycleReadingMode() }
+                    MenuActionRow(if (state.keepScreenOn) "屏幕常亮 · 开启" else "屏幕常亮 · 关闭", "💡", state.keepScreenOn) { viewModel.toggleKeepScreenOn() }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        TextButton(onClick = { viewModel.adjustInAppFontScale(-.1f) }) { Text("－", color = Color.White) }
+                        Text("字号 ${(state.inAppFontScale * 100).toInt()}%", color = Color.White, fontSize = 12.sp)
+                        TextButton(onClick = { viewModel.adjustInAppFontScale(.1f) }) { Text("＋", color = Color.White) }
+                    }
+                    MenuActionRow("检查更新", "↻") { viewModel.checkForUpdates() }
+                    MenuActionRow(if (state.autoCheckUpdatesEnabled) "自动更新检查 · 开启" else "自动更新检查 · 关闭", "↻", state.autoCheckUpdatesEnabled) { viewModel.toggleAutoCheckUpdates() }
                     if (state.anonymousStatsAvailable) {
-                        viewModel.toggleAnonymousStats()
-                    } else {
-                        android.widget.Toast.makeText(context, "当前构建未配置统计端点", android.widget.Toast.LENGTH_SHORT).show()
+                        MenuActionRow(if (state.anonymousStatsEnabled) "匿名统计 · 开启" else "匿名统计 · 关闭", "◌", state.anonymousStatsEnabled) { viewModel.toggleAnonymousStats() }
                     }
-                },
-                autoCheckUpdatesEnabled = state.autoCheckUpdatesEnabled,
-                onToggleAutoCheckUpdates = { viewModel.toggleAutoCheckUpdates() },
-                modifier = Modifier.fillMaxSize()
-            )
+                }
+            }
+            Box(Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(24.dp)
+                .size(44.dp).background(if (isExpanded) Accent else Color(0x55323634), CircleShape)
+                .semantics { contentDescription = if (isExpanded) "关闭设置" else "设置" }
+                .noRippleClickable { isExpanded = !isExpanded }, contentAlignment = Alignment.Center) {
+                Text(if (isExpanded) "✕" else "⚙", color = if (isExpanded) Color.Black else Color.White,
+                    fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            }
         }
-        }
-        if (state.libraryPage != 0) {
-            LyricsLibraryPage(state, viewModel, Modifier.fillMaxSize())
-        }
+        if (state.libraryPage != 0) LyricsLibraryPage(state, viewModel, Modifier.fillMaxSize())
     }
+}
+
+@Composable
+private fun TrackTitle(state: LyricsUiState, centered: Boolean) {
+    Column(horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start) {
+        Text(state.nowPlaying.track, color = Color.White, fontSize = if (centered) 22.sp else 28.sp,
+            lineHeight = 36.sp, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(state.nowPlaying.artist, color = Color(0xB3FFFFFF), fontSize = 16.sp,
+            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+    }
+}
+
+@Composable
+private fun CueControls(state: LyricsUiState, viewModel: MainViewModel, song: com.lyricsplus.android.data.LibrarySong?) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        TextButton(onClick = { if (song != null) viewModel.toggleFavorite(song) }, enabled = song != null,
+            modifier = Modifier.semantics { contentDescription = if (song?.favorite == true) "取消收藏当前歌曲" else "收藏当前歌曲" }) {
+            Text(if (song?.favorite == true) "★" else "☆", fontSize = 25.sp,
+                color = if (song?.favorite == true) Accent else Color.White.copy(alpha = if (song == null) .3f else 1f))
+        }
+        PlayPauseButton(state.playback.isPlaying, viewModel::togglePlayback)
+        SkipNextButton(viewModel::skipToNext)
+    }
+}
+
+@Composable
+private fun LyricsHome(onSearch: () -> Unit, onLibrary: () -> Unit) {
+    Column(Modifier.fillMaxSize().background(AppBackground).cuePageSwipe(onSearch, onLibrary)
+        .statusBarsPadding().navigationBarsPadding().padding(28.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(Modifier.size(32.dp).background(Brush.linearGradient(listOf(Color(0xFFD3A5FF), Color(0xFF8865E8))), RoundedCornerShape(9.dp)), contentAlignment = Alignment.Center) {
+                Text("L", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+            }
+            Text("lyrics", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+        }
+        Spacer(Modifier.weight(1f))
+        Text("下一首，\n唱你想唱的。", color = Color.White, fontSize = 38.sp, lineHeight = 48.sp, fontWeight = FontWeight.ExtraBold)
+        Text("让歌词跟着你", color = Color(0xFF8D9490), fontSize = 17.sp, modifier = Modifier.padding(top = 14.dp, bottom = 28.dp))
+        Button(onClick = onSearch, colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color.Black),
+            shape = RoundedCornerShape(12.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 28.dp, vertical = 16.dp)) {
+            Text("搜索歌词", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.weight(.75f))
+        Text("右滑搜索   ·   左滑列表", color = Color(0xFF8D9490), fontSize = 13.sp)
+        Text("保存后离线提词 · 长按拖动校准进度", color = Color(0x668D9490), fontSize = 12.sp,
+            modifier = Modifier.padding(top = 8.dp, bottom = 64.dp))
+    }
+}
+
+private fun Modifier.cuePageSwipe(onRight: () -> Unit, onLeft: () -> Unit): Modifier = pointerInput(onRight, onLeft) {
+    var distance = 0f
+    detectHorizontalDragGestures(onDragStart = { distance = 0f }, onHorizontalDrag = { _, delta -> distance += delta },
+        onDragEnd = { if (distance > 72.dp.toPx()) onRight() else if (distance < -72.dp.toPx()) onLeft() })
 }
 
 @Composable
@@ -879,7 +418,7 @@ private fun EmptyOverlay(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "正在搜索歌词...",
+                    text = "正在加载歌词…",
                     color = Color(0xB3FFFFFF),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
@@ -929,340 +468,6 @@ private fun EmptyOverlay(
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun AboutProjectPage(
-    onCheckUpdates: () -> Unit,
-    onOpenProject: () -> Unit,
-    onOpenFeedback: () -> Unit,
-    anonymousStatsAvailable: Boolean,
-    anonymousStatsEnabled: Boolean,
-    onToggleAnonymousStats: () -> Unit,
-    autoCheckUpdatesEnabled: Boolean,
-    onToggleAutoCheckUpdates: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var showSponsorCodes by remember { mutableStateOf(false) }
-
-    BackHandler(enabled = showSponsorCodes) {
-        showSponsorCodes = false
-    }
-
-    Box(
-        modifier = modifier
-            .background(AppBackground)
-            .statusBarsPadding()
-            .navigationBarsPadding()
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 22.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
-        ) {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = "关于项目",
-                    color = Color.White,
-                    fontSize = 32.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    lineHeight = 38.sp
-                )
-            }
-
-            AboutSection(title = "项目") {
-                AboutActionItem(
-                    title = "检测更新",
-                    subtitle = "检查 GitHub Release 是否有新版本",
-                    onClick = onCheckUpdates
-                )
-                AboutDivider()
-                AboutSwitchItem(
-                    title = "自动检测更新",
-                    subtitle = if (autoCheckUpdatesEnabled) {
-                        "启动 App 时静默检查，有新版本才提示"
-                    } else {
-                        "关闭后只保留手动检测"
-                    },
-                    checked = autoCheckUpdatesEnabled,
-                    enabled = true,
-                    onClick = onToggleAutoCheckUpdates
-                )
-                AboutDivider()
-                AboutActionItem(
-                    title = "项目地址",
-                    subtitle = "打开 GitHub 项目主页，欢迎 Star",
-                    onClick = onOpenProject
-                )
-                AboutDivider()
-                AboutActionItem(
-                    title = "反馈问题",
-                    subtitle = "打开作者酷安主页",
-                    onClick = onOpenFeedback
-                )
-            }
-
-            AboutSection(title = "隐私") {
-                AboutSwitchItem(
-                    title = when {
-                        !anonymousStatsAvailable -> "匿名统计未配置"
-                        anonymousStatsEnabled -> "匿名统计已开启"
-                        else -> "匿名统计已关闭"
-                    },
-                    subtitle = if (anonymousStatsAvailable) {
-                        "仅统计活跃用户、版本分布和功能使用摘要，不收集歌曲名或账号"
-                    } else {
-                        "当前构建未配置统计端点，不会发送统计事件"
-                    },
-                    checked = anonymousStatsAvailable && anonymousStatsEnabled,
-                    enabled = anonymousStatsAvailable,
-                    onClick = onToggleAnonymousStats
-                )
-            }
-
-            AboutSection(title = "支持") {
-                AboutActionItem(
-                    title = "赞助说明",
-                    subtitle = if (showSponsorCodes) {
-                        "收起支付宝 / 微信支付二维码"
-                    } else {
-                        "如果本项目帮助了你，可以给作者买一杯咖啡"
-                    },
-                    onClick = { showSponsorCodes = !showSponsorCodes }
-                )
-                AnimatedVisibility(
-                    visible = showSponsorCodes,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
-                ) {
-                    Column {
-                        AboutDivider()
-                        SponsorQrCodes()
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun AboutSection(
-    title: String,
-    content: @Composable () -> Unit
-) {
-    Column(
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(
-            text = title,
-            color = TextMuted,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(start = 4.dp)
-        )
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(22.dp),
-            colors = CardDefaults.cardColors(containerColor = Panel),
-            border = BorderStroke(1.dp, Outline)
-        ) {
-            Column {
-                content()
-            }
-        }
-    }
-}
-
-@Composable
-private fun AboutActionItem(
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit
-) {
-    AboutListRow(
-        title = title,
-        subtitle = subtitle,
-        onClick = onClick,
-        trailing = {
-            Text(
-                text = "›",
-                color = Color(0x99FFFFFF),
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-    )
-}
-
-@Composable
-private fun AboutSwitchItem(
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit
-) {
-    AboutListRow(
-        title = title,
-        subtitle = subtitle,
-        onClick = onClick,
-        enabled = enabled,
-        trailing = {
-            Switch(
-                checked = checked,
-                enabled = enabled,
-                onCheckedChange = { onClick() }
-            )
-        }
-    )
-}
-
-@Composable
-private fun SponsorQrCodes() {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        SponsorQrImage(
-            title = "支付宝",
-            resId = R.drawable.sponsor_alipay
-        )
-        SponsorQrImage(
-            title = "微信支付",
-            resId = R.drawable.sponsor_wechat
-        )
-    }
-}
-
-@Composable
-private fun SponsorQrImage(
-    title: String,
-    resId: Int
-) {
-    Column(
-        modifier = Modifier.widthIn(max = 360.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = title,
-            color = Color.White,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Image(
-            painter = painterResource(id = resId),
-            contentDescription = "$title 支付二维码",
-            contentScale = ContentScale.FillWidth,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(24.dp))
-                .border(1.dp, Outline, RoundedCornerShape(24.dp))
-        )
-    }
-}
-
-@Composable
-private fun AboutListRow(
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit,
-    enabled: Boolean = true,
-    trailing: (@Composable () -> Unit)? = null
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = enabled) { onClick() }
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Text(
-                text = title,
-                color = if (enabled) Color.White else Color(0xB3FFFFFF),
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                lineHeight = 20.sp
-            )
-            Text(
-                text = subtitle,
-                color = TextMuted,
-                fontSize = 12.sp,
-                lineHeight = 17.sp
-            )
-        }
-        trailing?.invoke()
-    }
-}
-
-@Composable
-private fun AboutDivider() {
-    HorizontalDivider(
-        color = Outline,
-        modifier = Modifier.padding(horizontal = 16.dp)
-    )
-}
-
-@Composable
-private fun LyricsOffsetAdjustRow(
-    offsetText: String,
-    onAdvance: () -> Unit,
-    onDelay: () -> Unit,
-    onReset: () -> Unit
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .background(Color(0xD9101211), RoundedCornerShape(6.dp))
-                .noRippleClickable { onAdvance() }
-                .padding(horizontal = 10.dp, vertical = 6.dp)
-        ) {
-            Text("歌词提前", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-        }
-
-        Box(
-            modifier = Modifier
-                .background(Color(0xD9101211), RoundedCornerShape(6.dp))
-                .padding(horizontal = 10.dp, vertical = 6.dp)
-        ) {
-            Text(offsetText, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-        }
-
-        Box(
-            modifier = Modifier
-                .background(Color(0xD9101211), RoundedCornerShape(6.dp))
-                .noRippleClickable { onDelay() }
-                .padding(horizontal = 10.dp, vertical = 6.dp)
-        ) {
-            Text("歌词延后", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-        }
-
-        Box(
-            modifier = Modifier
-                .size(42.dp)
-                .background(Color(0xD9323634), CircleShape)
-                .noRippleClickable { onReset() },
-            contentAlignment = Alignment.Center
-        ) {
-            Text("⏰", fontSize = 18.sp)
         }
     }
 }

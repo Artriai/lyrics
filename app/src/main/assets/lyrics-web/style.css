@@ -529,18 +529,28 @@ rt {
   -webkit-text-fill-color: transparent !important;
 }
 
-/* Only visible while calibrating the cue clock; normal lyric styling stays intact. */
+/* The cue guide stays at a fixed selection position while lyrics move past it. */
 .stage { -webkit-user-select: none; user-select: none; }
-.cue-position-badge {
-  position: fixed; left: 50%; bottom: calc(32px + env(safe-area-inset-bottom));
-  transform: translateX(-50%); z-index: 30; white-space: nowrap;
-  padding: 12px 20px; border-radius: 16px;
-  color: #101010; background: #4ad295;
-  font: 700 15px system-ui, sans-serif; pointer-events: none;
-  box-shadow: 0 8px 30px #0004;
+.cue-guide {
+  position: fixed; left: 24px; right: 24px; z-index: 30;
+  border-top: 2px dashed rgba(255, 255, 255, .75);
+  pointer-events: none;
 }
-.cue-position-badge[hidden] { display: none; }
+.cue-guide-time {
+  position: absolute; right: 0; top: 8px; color: rgba(255, 255, 255, .85);
+  font: 700 12px system-ui, sans-serif; text-shadow: 0 1px 6px #0008;
+}
+.cue-guide[hidden] { display: none; }
 .cue-scrubbing, .cue-scrubbing .lyrics-viewport { overflow: hidden !important; }
-/* Focused lyrics were previously pointer-transparent. Enable their hold gesture
-   without changing layout, while empty areas still reach the stage swipe handler. */
+.cue-scrubbing .lyrics, .cue-scrubbing .line, .cue-scrubbing .text, .cue-scrubbing .translation {
+  transition: none !important;
+}
+.stage:not(.full-lyrics-mode) .line.active { filter: none; }
 .stage:not(.full-lyrics-mode) .line { pointer-events: auto; }
+.stage.full-lyrics-mode:not(.right-aligned) .lyrics-viewport {
+  padding-top: calc(var(--header-bottom, 120px) + var(--safe-top, 28px));
+  clip-path: inset(calc(var(--header-bottom, 120px) + var(--safe-top, 28px)) 0 0 0);
+}
+
+/* Keep the permanent landscape controls in their existing left pane. */
+.stage.right-aligned.full-lyrics-mode .lyrics { left: 45%; width: 55%; }
