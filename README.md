@@ -1,42 +1,30 @@
 # lyrics
 
-独立的歌词提词板，沿用 Lyrics Plus 的歌词布局、逐字高亮、注音、翻译和滚动动效。
+Android 歌词提词应用。支持逐字高亮、日语注音、翻译和离线保存。
+
+从 [Releases](https://github.com/Artriai/lyrics/releases/latest) 下载 `lyrics.apk`，支持 Android 8.0 及以上。
 
 ## 使用
 
-- 提词页左滑进入列表，右滑进入搜索；列表右滑、搜索左滑返回提词。
-- 首页提供搜索 / 列表入口，以及滑动、长按和点击空白处的简短提示。
-- 模糊搜索歌名、歌手或同时输入两者；平台译名、别名和歌手别名也参与匹配，过滤不相关结果，热度用于排序相近匹配。热门 / 匹配切换立即对完整结果池重排并回到顶部。热门参考平台热度和搜索排名；点击结果打开歌词，点击 + 下载并保存到列表，留在搜索页。保存的歌曲可离线提词。
-- 列表支持收藏、筛选，左右滑动条目立即删除，无二次确认。
-- 集中模式沿用主 app 顶部布局，标题右侧只保留收藏、播放 / 暂停并常显；选歌后显示右下角设置；播放只控制歌词计时，不播放音频。
-- 集中模式在歌词行内直接上下滑动调整进度，每帧合并触摸更新，换行只更新附近行，松手短惯性减速后平滑归位；普通滑动不显示虚线。长按进入精细调整，虚线的行内高度连续映射逐字时间，松手恢复原播放状态。两个模式的进度手势均须从实际歌词行开始，空白处不触发。
-- 两个模式点击空白处相互切换；集中模式点击歌词不切换，全文隐藏标题和播放控件，点击某句跳转，系统返回手势回到集中模式。全文普通上下滚动用于浏览，长按歌词后拖动沿虚线连续调整逐字进度。
-- 设置只保留注音、字号、背景取色、歌词源和关于项目。关于页提供版本、项目地址、更新检查，点击出现弹跳的爱心、星星和点赞，伴随扩散光环与星芒；连续点击逐渐放大，停止连点后恢复大小。
+搜索并选择歌曲，点击播放开始歌词计时。伴奏需要另外播放，可拖动歌词校准进度。
 
-伴奏由外部设备播放。不同版本的前奏 / 间奏可能不同，可用上下拖动校准。
+- 左右滑动切换提词、列表和搜索页。
+- 点击空白处切换集中显示与全文显示，长按歌词可精细调整进度。
+- 搜索结果旁的 `+` 可保存歌词，下载后可离线使用。
 
-## 独立发布
-
-- 独立仓库：[Artriai/lyrics](https://github.com/Artriai/lyrics)，默认分支为 `main`。
-- 从 [Lyrics Plus Android 的 lyrics 分支](https://github.com/Artriai/lyrics-plus-android/tree/lyrics) 迁移，保留完整提交历史。
-- 应用名称：`lyrics`；应用 ID：`com.lyricsplus.lyrics`，可与原版同时安装。
-- 图标沿用原 L 造型，渐变改为紫色。
-- 向 `main` 提交后自动运行单元测试并构建 `lyrics.apk`。
-- 发布标签为 `lyrics-v<version>-build-<build_number>-<attempt>`，发布为本仓库 Latest。
-- 构建号从原仓库的 37 继续递增，保留应用 ID 和签名，可覆盖安装原 lyrics 版本。
-- 应用内更新检查本仓库的 `lyrics-v` 发布通道。
-- 下载地址：[Releases](https://github.com/Artriai/lyrics/releases/latest)。
+歌词来源：网易云音乐、QQ 音乐和 LRCLIB。
 
 ## 构建
 
+需要 Android SDK 36、JDK 17 和 JetBrains Runtime 21。
+
 ```sh
 chmod +x gradlew
-./gradlew testDebugUnitTest assembleDebug
-bash scripts/assemble-official-release.sh -PlyricsBuildNumber=1
+./gradlew assembleDebug
 ```
 
-使用 Android SDK 36 和 JetBrains Runtime 21（Gradle daemon），Java/Kotlin 编译目标 17。
-歌词源、匹配评分、缓存、日语注音和 WebView 渲染器复用原项目实现。
-匿名统计说明和第三方声明见 `docs/telemetry.md` 和 `THIRD_PARTY_NOTICES.md`。
+## 开源与统计
 
-搜索结果按匹配来源显示网易云音乐、QQ 音乐和 LRCLIB 标签，同一录音的多来源合并展示。标签表示搜索匹配来源，实际歌词源在加载时自动选择。
+基于 [Lyrics Plus Android](https://github.com/Artriai/lyrics-plus-android)，采用 [GPL-3.0](LICENSE) 协议。
+
+正式版包含匿名使用统计，详见 [统计说明](docs/telemetry.md)；第三方依赖见 [第三方声明](THIRD_PARTY_NOTICES.md)。
