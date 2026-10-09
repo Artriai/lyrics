@@ -337,8 +337,8 @@
 
   var vrrToggle = false;
   function tick() {
-    if (playback.isPlaying) {
-      updatePlaybackPosition();
+    if (playback.isPlaying || cueTouch && cueTouch.scrubbing || cueMotion) {
+      if (playback.isPlaying) updatePlaybackPosition();
       // Force 120Hz compositor scheduling on VRR Android screens.
       // Two signals are needed to convince the WebView compositor every frame has work:
       //   1. transform (compositor-only, no layout/paint) — matched by will-change:transform
@@ -668,7 +668,8 @@
     var lines = lyricsEl.querySelectorAll(".line");
     if (!lines.length) return;
 
-    var isSeek = prevActive === -1 || Math.abs(active - prevActive) > 3 || (cueTouch && cueTouch.scrubbing);
+    // A finger crossing one line is still an incremental change, not a whole-song seek.
+    var isSeek = prevActive === -1 || Math.abs(active - prevActive) > 3;
     var totalLines = lines.length;
 
     // Narrow the iteration range: only update lines whose visual state actually changed
@@ -721,6 +722,7 @@
       }
 
       // Skip expensive reading/furigana processing if readingMode is off or line has no reading data
+      if (prevActive >= 0 && i !== active && i !== prevActive) continue;
       if (!hasReadingMode || !lineData || !lineData.reading) {
         // Still remove stale romaji spans if reading mode was just turned off
         if (!hasReadingMode) {
@@ -1064,6 +1066,8 @@
   var cueTouch = null;
   var cueMotion = null;
   var cueMotionFrame = null;
+  var cueDragFrame = null;
+  var cueSettleTimer = null;
   var cueHoldTimer = null;
   var suppressClickUntil = 0;
   var cueGuide = document.createElement("div");
@@ -1220,12 +1224,18 @@
     cueGuide.hidden = true;
     cueBridge("endScrub");
     if (state.isFullLyricsMode) onUserScrollInteraction();
-    else { userScrolling = false; alignFocusedRow(); }
+    else {
+      userScrolling = false;
+      stageEl.classList.add("cue-settling");
+      alignFocusedRow();
+      if (cueSettleTimer !== null) clearTimeout(cueSettleTimer);
+      cueSettleTimer = setTimeout(function () { stageEl.classList.remove("cue-settling"); cueSettleTimer = null; }, 220);
+    }
   }
 
   function startCueMotion(context) {
     cueMotion = context;
-    var velocity = Math.max(-2.2, Math.min(2.2, context.velocity || 0));
+    var velocity = Math.max(-1.4, Math.min(1.4, context.velocity || 0));
     var started = performance.now(), previous = started;
     var target = context.target;
     var rows = context.rows;
@@ -1237,8 +1247,8 @@
       var proposed = target - velocity * dt;
       target = Math.max(min, Math.min(max, proposed));
       cueSeekAtHeight(target);
-      velocity *= Math.exp(-dt / 160);
-      if (now - started > 700 || Math.abs(velocity) < .035 || target !== proposed) finishCueMotion();
+      velocity *= Math.exp(-dt / 100);
+      if (now - started > 320 || Math.abs(velocity) < .06 || target !== proposed) finishCueMotion();
       else cueMotionFrame = requestAnimationFrame(frame);
     }
     cueMotionFrame = requestAnimationFrame(frame);
@@ -1248,13 +1258,16 @@
   stageEl.addEventListener("touchstart", function (event) {
     // A second finger/new sequence must end the previous gesture, even if its end was lost.
     finishCueTouch(true);
+    if (cueSettleTimer !== null) clearTimeout(cueSettleTimer);
+    cueSettleTimer = null;
+    stageEl.classList.remove("cue-settling");
     if (event.touches.length !== 1) return;
     var touch = event.touches[0];
-    cueTouch = { x: touch.clientX, y: touch.clientY, dx: 0, dy: 0, scrubbing: false,
-      lastY: touch.clientY, lastTime: performance.now(), velocity: 0 };
-    if (!state.lyrics.length) return;
     var line = event.target.closest ? event.target.closest(".line") : null;
-    if (state.isFullLyricsMode && !line) return;
+    var eligible = !!line && Number(getComputedStyle(line).opacity) > .05;
+    cueTouch = { x: touch.clientX, y: touch.clientY, dx: 0, dy: 0, scrubbing: false, eligible: eligible,
+      lastY: touch.clientY, lastTime: performance.now(), velocity: 0 };
+    if (!state.lyrics.length || !eligible) return;
     cueHoldTimer = setTimeout(function () {
       beginCueTouch(state.isFullLyricsMode ? Number(line.dataset.index) : clampedActiveIndex(), true);
     }, 450);
@@ -1269,20 +1282,34 @@
     cueTouch.lastY = y; cueTouch.lastTime = now;
     cueTouch.dx = event.touches[0].clientX - cueTouch.x;
     cueTouch.dy = y - cueTouch.y;
-    if (!cueTouch.scrubbing && !state.isFullLyricsMode && Math.abs(cueTouch.dy) > 8 && Math.abs(cueTouch.dy) > Math.abs(cueTouch.dx) * 1.25) beginCueTouch(clampedActiveIndex(), false);
+    if (cueTouch.eligible && !cueTouch.scrubbing && !state.isFullLyricsMode && Math.abs(cueTouch.dy) > 8 && Math.abs(cueTouch.dy) > Math.abs(cueTouch.dx) * 1.25) beginCueTouch(clampedActiveIndex(), false);
     if (cueTouch.scrubbing) {
       event.preventDefault();
-      var distance = cueTouch.dy * (cueTouch.fine && !state.isFullLyricsMode ? .35 : 1);
-      if (state.isFullLyricsMode) getScrollContainer().scrollTop = cueTouch.scrollTop - distance;
-      cueSeekAtHeight(cueTouch.anchorOffset - distance);
+      // Coalesce high-frequency touch events into a single paint per display frame.
+      if (cueDragFrame === null) cueDragFrame = requestAnimationFrame(function () {
+        cueDragFrame = null;
+        paintCueTouch();
+      });
     } else {
       if (Math.abs(cueTouch.dx) > 10 || Math.abs(cueTouch.dy) > 10) clearCueHold();
       if (Math.abs(cueTouch.dx) > 16 && Math.abs(cueTouch.dx) > Math.abs(cueTouch.dy) * 1.5) event.preventDefault();
     }
   }, { passive: false });
 
+  function paintCueTouch() {
+    if (!cueTouch || !cueTouch.scrubbing) return;
+    var distance = cueTouch.dy * (cueTouch.fine && !state.isFullLyricsMode ? .35 : 1);
+    if (state.isFullLyricsMode) getScrollContainer().scrollTop = cueTouch.scrollTop - distance;
+    cueSeekAtHeight(cueTouch.anchorOffset - distance);
+  }
+
   function finishCueTouch(cancelled) {
     clearCueHold();
+    if (cueDragFrame !== null) {
+      cancelAnimationFrame(cueDragFrame);
+      cueDragFrame = null;
+      if (!cancelled) paintCueTouch();
+    }
     finishCueMotion();
     if (!cueTouch) {
       if (cancelled) { stageEl.classList.remove("cue-scrubbing", "cue-dragging"); cueGuide.hidden = true; }
@@ -1313,7 +1340,7 @@
       cueSeek(Number(state.lyrics[Number(line.dataset.index)].startTimeMs), Number(line.dataset.index), 0);
       cueBridge("endScrub");
       onUserScrollInteraction();
-    } else toggleFullLyricsMode();
+    } else if (line) toggleFullLyricsMode();
   });
 
   // Re-calculate layout and scroll offsets on window resize (rotation / unfolding)

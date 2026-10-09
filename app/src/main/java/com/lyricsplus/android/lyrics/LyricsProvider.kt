@@ -7,7 +7,6 @@ import com.lyricsplus.android.data.LyricsSearchResult
 import com.lyricsplus.android.data.SongSearchMatch
 import com.lyricsplus.android.data.mergeSongSearchMatches
 import com.lyricsplus.android.data.songSearchQueries
-import com.lyricsplus.android.data.sortSongSearchMatches
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
@@ -212,7 +211,7 @@ class LyricsProvider(
         }
     }
 
-    suspend fun searchSongs(query: String, popular: Boolean = true): Result<List<SongSearchMatch>> = withContext(Dispatchers.IO) {
+    suspend fun searchSongs(query: String): Result<List<SongSearchMatch>> = withContext(Dispatchers.IO) {
         val searches = songSearchQueries(query).flatMap { phrase -> listOf(
             async { runCatching { neteaseClient.searchSongs(phrase) } },
             async { runCatching { qqMusicClient.searchSongs(phrase) } },
@@ -221,7 +220,8 @@ class LyricsProvider(
         if (searches.all { it.isFailure }) {
             Result.failure(searches.first().exceptionOrNull() ?: java.io.IOException("搜索失败"))
         } else {
-            Result.success(sortSongSearchMatches(mergeSongSearchMatches(searches.flatMap { it.getOrDefault(emptyList()) }), query, popular).take(90))
+            // Keep the complete pool so switching sort can also change the first 90 hits.
+            Result.success(mergeSongSearchMatches(searches.flatMap { it.getOrDefault(emptyList()) }))
         }
     }
 
