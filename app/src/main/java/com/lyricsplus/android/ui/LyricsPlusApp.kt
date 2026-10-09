@@ -79,6 +79,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import com.lyricsplus.android.R
 import com.lyricsplus.android.data.libraryKey
 
@@ -277,6 +280,9 @@ private fun LyricsOverlay(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize().then(
+            if (state.libraryPage != 0) Modifier.clearAndSetSemantics { } else Modifier
+        )) {
         // 1. Host WebView natively inside Compose container
         AndroidView(
             factory = {
@@ -759,10 +765,6 @@ private fun LyricsOverlay(
             }
         }
 
-        if (state.libraryPage != 0) {
-            LyricsLibraryPage(state, viewModel, Modifier.fillMaxSize())
-        }
-
         if (showAboutPage) {
             AboutProjectPage(
                 onCheckUpdates = { viewModel.checkForUpdates() },
@@ -785,6 +787,10 @@ private fun LyricsOverlay(
                 onToggleAutoCheckUpdates = { viewModel.toggleAutoCheckUpdates() },
                 modifier = Modifier.fillMaxSize()
             )
+        }
+        }
+        if (state.libraryPage != 0) {
+            LyricsLibraryPage(state, viewModel, Modifier.fillMaxSize())
         }
     }
 }
@@ -1312,6 +1318,7 @@ private fun PlayPauseButton(
     Box(
         modifier = modifier
             .size(44.dp)
+            .semantics { contentDescription = if (isPlaying) "暂停提词" else "开始提词" }
             .clickable(
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                 indication = null
