@@ -1,6 +1,8 @@
 package com.lyricsplus.android
 
 import android.graphics.Bitmap
+import android.content.ContentValues
+import android.provider.MediaStore
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -49,7 +51,7 @@ class LyricsFlowTest {
 
             compose.onNodeWithText("搜索并添加歌词").performClick()
             compose.onNodeWithText("搜索歌词").assertIsDisplayed()
-            compose.onNodeWithText("歌名或歌手").performTextInput("周杰伦")
+            compose.onNode(hasSetTextAction()).performTextInput("周杰伦")
             compose.onNodeWithText("周杰伦").assertIsDisplayed()
             screenshot(app, "02-search")
             compose.onNodeWithText("返回").performClick()
@@ -75,7 +77,17 @@ class LyricsFlowTest {
         Thread.sleep(700) // Allow WebView painting and the existing fade/scroll animations to settle.
         val screenshot = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
         assertNotNull(screenshot)
-        val directory = File(app.getExternalFilesDir(null), "screenshots").apply { mkdirs() }
-        File(directory, "$name.png").outputStream().use { screenshot.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        // Shared images survive Gradle's automatic uninstall of the test/target APKs.
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, "$name.png")
+            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/lyrics-ui")
+            put(MediaStore.Images.Media.IS_PENDING, 1)
+        }
+        val uri = app.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)!!
+        app.contentResolver.openOutputStream(uri)!!.use { screenshot.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        values.clear()
+        values.put(MediaStore.Images.Media.IS_PENDING, 0)
+        app.contentResolver.update(uri, values, null, null)
     }
 }

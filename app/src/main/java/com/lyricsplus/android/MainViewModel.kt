@@ -185,7 +185,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun endScrub() {
         if (!_uiState.value.isScrubbing) return
-        if (resumeAfterScrub) timeline = timeline.resume(SystemClock.elapsedRealtime())
+        timeline = timeline.finishScrub(resumeAfterScrub, SystemClock.elapsedRealtime())
         resumeAfterScrub = false
         _uiState.update { it.copy(isScrubbing = false) }
         publishClock()

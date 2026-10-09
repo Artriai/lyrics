@@ -1081,7 +1081,7 @@
     setPlaybackState(clamped, false, true);
     cueBridge("seekCue", clamped);
     var seconds = Math.floor(clamped / 1000);
-    cueBadge.textContent = "↕ " + Math.floor(seconds / 60) + ":" + ("0" + (seconds % 60)).slice(-2) + " · 松手继续";
+    cueBadge.textContent = "↕ " + Math.floor(seconds / 60) + ":" + ("0" + (seconds % 60)).slice(-2) + " · 松手确认";
   }
 
   stageEl.addEventListener("contextmenu", function (event) { event.preventDefault(); });
