@@ -7,7 +7,7 @@ class SongSearchRankingTest {
     @Test fun combinesTitleAndArtistInEitherOrder() {
         val wanted = NowPlaying(track = "晴天", artist = "周杰伦")
         val other = NowPlaying(track = "夜曲", artist = "周杰伦")
-        for (query in listOf("周杰伦 晴天", "晴天 周杰伦", "周杰伦晴天", "周杰伦 晴")) {
+        for (query in listOf("周杰伦 晴天", "晴天 周杰伦", "周杰伦晴天", "周杰伦 晴", "周杰伦晴", "晴周杰伦")) {
             assertTrue(query, songSearchScore(wanted, query) > songSearchScore(other, query))
         }
         assertEquals(listOf("周杰伦 晴天", "晴天", "周杰伦"), songSearchQueries("周杰伦 晴天"))
@@ -63,7 +63,7 @@ class SongSearchRankingTest {
         val song = SongSearchMatch(NowPlaying(track = "君の知らない物語", artist = "supercell"),
             listOf("网易云音乐"), aliases = listOf("你不知道的故事"))
         val other = SongSearchMatch(NowPlaying(track = "Other song", artist = "supercell"), listOf("QQ音乐"))
-        for (query in listOf("你不知道", "supercell 你不知道", "你不知道supercell")) {
+        for (query in listOf("你不知道", "supercell 你不知道", "你不知道supercell", "supercell你不知道")) {
             assertEquals(song, sortSongSearchMatches(listOf(other, song), query, true).first())
         }
         val artist = song.copy(artistAliases = listOf("超级细胞"))
