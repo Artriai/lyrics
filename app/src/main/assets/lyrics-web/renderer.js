@@ -1086,7 +1086,7 @@
 
   stageEl.addEventListener("contextmenu", function (event) { event.preventDefault(); });
   stageEl.addEventListener("touchstart", function (event) {
-    if (event.touches.length !== 1) return;
+    if (event.touches.length !== 1) { finishCueTouch(true); return; }
     var touch = event.touches[0];
     var position = playback.positionMs + (playback.isPlaying ? performance.now() - playback.updatedAt : 0);
     cueTouch = { x: touch.clientX, y: touch.clientY, dx: 0, dy: 0, position: position, scrubbing: false };
