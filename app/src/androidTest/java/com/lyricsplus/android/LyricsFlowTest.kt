@@ -177,7 +177,7 @@ class LyricsFlowTest {
                 vm.setSearchPopular(true)
                 vm.openSearch()
             }
-            compose.onNodeWithText("网易云音乐").assertIsDisplayed()
+            compose.onAllNodesWithText("网易云音乐")[0].assertIsDisplayed()
             compose.onNodeWithText("QQ音乐").assertIsDisplayed()
             compose.onNodeWithText("LRCLIB").assertIsDisplayed()
             compose.onNodeWithText(track.track).assertIsDisplayed()
