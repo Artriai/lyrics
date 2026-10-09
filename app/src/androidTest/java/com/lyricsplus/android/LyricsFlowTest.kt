@@ -47,10 +47,14 @@ class LyricsFlowTest {
             LyricsLine(8000, "下一句慢慢出现", "左右滑动进入歌词列表")
         ), "网易云音乐")
         db.saveLibrarySong(track, "网易云音乐")
+        val disposable = track.copy(track = "左滑立即删除的歌曲")
+        db.saveLyrics(disposable.libraryKey(), listOf(LyricsLine(0, "临时歌词")), "网易云音乐")
+        db.saveLibrarySong(disposable, "网易云音乐")
 
         var scenario = ActivityScenario.launch(MainActivity::class.java)
         try {
             compose.waitUntil(10_000) { compose.onAllNodesWithText("搜索歌词").fetchSemanticsNodes().isNotEmpty() }
+            compose.onAllNodesWithContentDescription("设置").assertCountEquals(0)
             screenshot(app, "00-home")
             compose.onRoot().performTouchInput { swipeLeft() }
             compose.onNodeWithText("歌词列表").assertIsDisplayed()
@@ -60,21 +64,24 @@ class LyricsFlowTest {
             compose.waitUntil(10_000) {
                 compose.onAllNodesWithContentDescription("取消收藏 ${track.track}").fetchSemanticsNodes().isNotEmpty()
             }
-            assertTrue(LyricsCacheDatabase(app).librarySongs().single().favorite)
-            compose.onNodeWithText(track.track).performTouchInput { swipeLeft() }
-            compose.onNodeWithText("删除这首歌词？").assertIsDisplayed()
+            assertTrue(LyricsCacheDatabase(app).librarySongs().first { it.key == track.libraryKey() }.favorite)
+            compose.onNodeWithText(disposable.track).performTouchInput { swipeLeft() }
+            compose.waitUntil(10_000) { compose.onAllNodesWithText(disposable.track).fetchSemanticsNodes().isEmpty() }
+            compose.onAllNodesWithText("删除这首歌词？").assertCountEquals(0)
+            assertFalse(LyricsCacheDatabase(app).librarySongs().any { it.key == disposable.libraryKey() })
             screenshot(app, "04-swipe-delete")
-            compose.onNodeWithText("取消").performClick()
             compose.onNodeWithText(track.track).assertIsDisplayed()
 
             back(scenario)
             compose.onNodeWithText("搜索歌词").performClick()
             compose.onNodeWithText("搜索歌词").assertIsDisplayed()
+            compose.onNodeWithText("热门").assertIsDisplayed().performClick()
+            compose.onNodeWithText("匹配").assertIsDisplayed().performClick()
             compose.onNode(hasSetTextAction()).performTextInput("周杰伦")
             compose.onNodeWithText("周杰伦").assertIsDisplayed()
             screenshot(app, "02-search")
             back(scenario)
-            compose.onNodeWithText("让歌词跟着你").assertIsDisplayed()
+            compose.onNodeWithText("歌词", substring = false).assertIsDisplayed()
             compose.onRoot().performTouchInput { swipeLeft() }
             compose.onNodeWithText(track.track).performClick()
             compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("开始提词").fetchSemanticsNodes().isNotEmpty() }
@@ -103,6 +110,9 @@ class LyricsFlowTest {
                 swipe(Offset(width * .3f, height * .7f), Offset(width * .3f, height * .5f), 250)
             }
             compose.waitUntil(10_000) { app.getSharedPreferences("lyrics_plus_prefs", 0).getLong("last_position", 0) > 0 }
+            webJs(scenario, "window.LyricsPlus.toggleMode();window.LyricsPlus.toggleMode()")
+            Thread.sleep(650)
+            assertEquals("0", webJs(scenario, "document.getElementById('stage').scrollTop"))
             webJs(scenario, "window.LyricsPlus.toggleMode()")
             compose.waitUntil(10_000) { webJs(scenario, "document.getElementById('stage').classList.contains('full-lyrics-mode')") == "true" }
             Thread.sleep(1100) // Ignore the compatibility click after the preceding swipe.
@@ -129,7 +139,7 @@ class LyricsFlowTest {
             scenario = ActivityScenario.launch(MainActivity::class.java)
             compose.waitUntil(10_000) { compose.onAllNodesWithText(track.track).fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText(track.track).assertIsDisplayed()
-            assertTrue(LyricsCacheDatabase(app).librarySongs().single().favorite)
+            assertTrue(LyricsCacheDatabase(app).librarySongs().first { it.key == track.libraryKey() }.favorite)
             assertEquals(3, LyricsCacheDatabase(app).getLyrics(track.libraryKey())!!.lyrics.size)
         } finally { scenario.close(); db.close() }
     }

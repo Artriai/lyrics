@@ -6,6 +6,26 @@ import java.util.Locale
 private fun String.searchNormalized(): String = Normalizer.normalize(this, Normalizer.Form.NFKC)
     .lowercase(Locale.ROOT).filter { it.isLetterOrDigit() }
 
+/** Popularity never promotes a partial-token hit over a complete query match. */
+fun sortSongSearchMatches(matches: List<SongSearchMatch>, query: String, popular: Boolean): List<SongSearchMatch> {
+    if (!popular) return matches.sortedByDescending { songSearchScore(it.track, query) }
+    val whole = query.searchNormalized()
+    val parts = query.trim().split(Regex("[\\s·/，,]+" )).map { it.searchNormalized() }.filter { it.isNotBlank() }
+    fun tier(track: NowPlaying): Int {
+        val title = track.track.searchNormalized()
+        val artist = track.artist.searchNormalized()
+        val fields = listOf(title, artist, title + artist, artist + title)
+        if (whole.isNotBlank() && fields.any { it.contains(whole) }) return 3
+        if (parts.isNotEmpty() && parts.all { part -> fields.any { it.contains(part) } }) return 2
+        return 1
+    }
+    fun heat(match: SongSearchMatch): Double = (match.popularity ?: 0).toDouble() +
+        match.sourceRanks.filterKeys { it != "LRCLIB" }.values.sumOf { 15.0 / (it.coerceAtLeast(0) + 1) } +
+        (match.sources.size - 1).coerceAtLeast(0) * 2.0
+    return matches.sortedWith(compareByDescending<SongSearchMatch> { tier(it.track) }
+        .thenByDescending { heat(it) }.thenByDescending { songSearchScore(it.track, query) })
+}
+
 /** Search the full phrase plus either side, then rank against title AND artist. */
 fun songSearchQueries(query: String): List<String> {
     val parts = query.trim().split(Regex("[\\s·/，,]+" )).filter { it.isNotBlank() }

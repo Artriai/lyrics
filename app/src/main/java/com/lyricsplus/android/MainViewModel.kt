@@ -35,6 +35,7 @@ data class LyricsUiState(
     val autoCheckUpdatesEnabled: Boolean = true,
     val library: List<LibrarySong> = emptyList(),
     val searchQuery: String = "",
+    val searchPopular: Boolean = true,
     val searchResults: List<SongSearchMatch> = emptyList(),
     val isSearching: Boolean = false,
     val searchMessage: String = "",
@@ -47,6 +48,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val libraryDb = LyricsCacheDatabase(application)
     private val prefs = application.getSharedPreferences("lyrics_plus_prefs", Context.MODE_PRIVATE)
     private val _uiState = MutableStateFlow(LyricsUiState(
+        searchPopular = prefs.getBoolean("search_popular", true),
         readingMode = prefs.getInt("reading_mode", 1),
         keepScreenOn = prefs.getBoolean("keep_screen_on", true),
         inAppFontScale = prefs.getFloat("in_app_font_scale", 1f),
@@ -97,16 +99,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(searchQuery = query, searchResults = emptyList(), searchMessage = "", isSearching = false) }
     }
 
+    fun setSearchPopular(popular: Boolean) {
+        prefs.edit().putBoolean("search_popular", popular).apply()
+        _uiState.update { it.copy(searchPopular = popular,
+            searchResults = sortSongSearchMatches(it.searchResults, it.searchQuery, popular)) }
+    }
+
     fun searchSongs() {
         val query = _uiState.value.searchQuery.trim()
         if (query.isBlank()) return
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             _uiState.update { it.copy(isSearching = true, searchMessage = "", searchResults = emptyList()) }
-            val result = lyricsProvider.searchSongs(query)
+            val result = lyricsProvider.searchSongs(query, _uiState.value.searchPopular)
             ensureActive()
             _uiState.update { state -> result.fold(
-                onSuccess = { state.copy(isSearching = false, searchResults = it,
+                onSuccess = { state.copy(isSearching = false, searchResults = sortSongSearchMatches(it, query, state.searchPopular),
                     searchMessage = if (it.isEmpty()) "没有找到歌曲，试试歌名加歌手" else "") },
                 onFailure = { state.copy(isSearching = false, searchMessage = "搜索失败，请检查网络后重试") }
             ) }

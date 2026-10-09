@@ -1,7 +1,12 @@
 package com.lyricsplus.android.data
 
 /** Sources that returned this song in search; actual lyric availability is checked on selection. */
-data class SongSearchMatch(val track: NowPlaying, val sources: List<String>)
+data class SongSearchMatch(
+    val track: NowPlaying,
+    val sources: List<String>,
+    val popularity: Int? = null,
+    val sourceRanks: Map<String, Int> = emptyMap()
+)
 
 fun mergeSongSearchMatches(matches: List<SongSearchMatch>): List<SongSearchMatch> {
     val merged = mutableListOf<SongSearchMatch>()
@@ -20,7 +25,11 @@ fun mergeSongSearchMatches(matches: List<SongSearchMatch>): List<SongSearchMatch
             merged[index] = SongSearchMatch(old.track.copy(
                 album = old.track.album.ifBlank { song.album },
                 durationSeconds = old.track.durationSeconds.takeIf { it > 0 } ?: song.durationSeconds
-            ), (old.sources + match.sources).distinct())
+            ), (old.sources + match.sources).distinct(),
+                listOfNotNull(old.popularity, match.popularity).maxOrNull(),
+                (old.sourceRanks.keys + match.sourceRanks.keys).associateWith { source ->
+                    minOf(old.sourceRanks[source] ?: Int.MAX_VALUE, match.sourceRanks[source] ?: Int.MAX_VALUE)
+                })
         }
     }
     return merged

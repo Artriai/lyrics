@@ -2,6 +2,7 @@ package com.lyricsplus.android.lyrics
 
 import com.lyricsplus.android.data.LyricsLine
 import com.lyricsplus.android.data.NowPlaying
+import com.lyricsplus.android.data.SongSearchMatch
 import com.lyricsplus.android.data.LyricsSearchResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -17,14 +18,14 @@ class LrclibClient {
         }
     }
 
-    suspend fun searchSongs(query: String): List<NowPlaying> = withContext(Dispatchers.IO) {
+    suspend fun searchSongs(query: String): List<SongSearchMatch> = withContext(Dispatchers.IO) {
         val response = request("https://lrclib.net/api/search?q=" + query.urlEncode())
         check(response.code in 200..299) { "LRCLIB 搜索失败 (${response.code})" }
         val songs = JSONArray(response.body)
         (0 until songs.length()).map { songs.getJSONObject(it) }
             .filter { it.optString("syncedLyrics").isNotBlank() || it.optString("enhancedLyrics").isNotBlank() }
-            .map { NowPlaying(track = it.optString("trackName"), artist = it.optString("artistName"),
-                album = it.optString("albumName"), durationSeconds = kotlin.math.round(it.optDouble("duration", 0.0)).toInt()) }
+            .mapIndexed { rank, song -> SongSearchMatch(NowPlaying(track = song.optString("trackName"), artist = song.optString("artistName"),
+                album = song.optString("albumName"), durationSeconds = kotlin.math.round(song.optDouble("duration", 0.0)).toInt()), listOf("LRCLIB"), sourceRanks = mapOf("LRCLIB" to rank)) }
     }
 
     private fun fetchExact(track: NowPlaying): LyricsSearchResult? {
